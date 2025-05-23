@@ -9,10 +9,10 @@ import {
   Form,
   FormControl,
   FormField,
-  FormItem,
-  FormLabel,
+  FormItem, // Keep for generalForm
+  FormLabel, // Keep for generalForm
   FormMessage,
-  FormDescription,
+  FormDescription, // Keep for generalForm
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,6 +27,7 @@ import React, { useEffect, useState, useRef } from "react";
 import ProtectedRoute from "@/components/common/ProtectedRoute";
 import Image from "next/image";
 import { UploadCloud, XCircle } from "lucide-react";
+import { Label } from "@/components/ui/label"; // Import basic Label
 
 const generalSettingsSchema = z.object({
   appName: z.string().min(3, "App name must be at least 3 characters.").max(50, "App name must be at most 50 characters."),
@@ -229,7 +230,7 @@ export default function AdminSettingsPage() {
                   <p>Loading logo...</p>
                 ) : (
                   <>
-                    <FormLabel>Current Logo</FormLabel>
+                    <Label>Current Logo</Label>
                     <div className="flex items-center justify-center w-full h-32 rounded-md border border-dashed bg-muted/50 mb-4">
                       {logoPreview ? (
                         <Image src={logoPreview} alt="Current App Logo" width={100} height={100} className="object-contain h-28 w-28" data-ai-hint="logo company"/>
@@ -238,8 +239,8 @@ export default function AdminSettingsPage() {
                       )}
                     </div>
 
-                    <FormItem>
-                      <FormLabel htmlFor="logo-upload">Upload New Logo</FormLabel>
+                    <div className="space-y-1"> {/* Replaced FormItem */}
+                      <Label htmlFor="logo-upload">Upload New Logo</Label>
                       <Input
                         id="logo-upload"
                         type="file"
@@ -248,8 +249,8 @@ export default function AdminSettingsPage() {
                         ref={fileInputRef}
                         className="text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
                       />
-                      <FormDescription>Recommended: Square logo, PNG or SVG.</FormDescription>
-                    </FormItem>
+                      <p className="text-sm text-muted-foreground">Recommended: Square logo, PNG or SVG.</p> {/* Replaced FormDescription */}
+                    </div>
 
                     <div className="flex gap-2">
                       <Button onClick={handleUploadLogo} disabled={isUploadingLogo || !selectedLogoFile} className="flex-1">
