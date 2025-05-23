@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: APP_NAME,
+  title: APP_NAME, // Updated here
   description: 'Collaborative platform for managing shared funds and investments.',
 };
 

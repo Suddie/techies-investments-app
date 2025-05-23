@@ -19,14 +19,14 @@ export const ACCESS_LEVELS: Record<AccessLevel, string> = {
 };
 
 export const DEFAULT_GLOBAL_SETTINGS = {
-  appName: "Techies Investments Lite",
+  appName: "Techies Investments App",
   logoUrl: null,
   currencySymbol: "MK",
   contributionMin: 1000,
   contributionMax: 100000,
 };
 
-export const APP_NAME = "Techies Investments Lite";
+export const APP_NAME = "Techies Investments App";
 
 export const NAVIGATION_LINKS = [
   { href: "/dashboard", label: "Dashboard", icon: "LayoutDashboard", adminOnly: false, requiredAccessLevel: 3 },
