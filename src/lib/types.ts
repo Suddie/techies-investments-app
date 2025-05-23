@@ -30,7 +30,7 @@ export interface Contribution {
 
 export interface GlobalSettings {
   appName: string;
-  logoUrl: string | null; // Ensure this can be null
+  logoUrl: string | null;
   invoiceLogoUrl?: string | null;
   useAppLogoForInvoice?: boolean;
   contributionMin?: number;
@@ -53,4 +53,20 @@ export interface NotificationMessage {
   relatedLink?: string;
 }
 
-// Add other types as needed for expenses, milestones, tenants etc.
+export interface Expense {
+  id?: string; // Firestore document ID
+  date: Date; // Timestamp in Firestore
+  description: string;
+  category: string; // e.g., 'Office Supplies', 'Utilities', 'Project Material'
+  quantity: number;
+  unitPrice: number;
+  subtotal: number; // quantity * unitPrice
+  totalAmount: number; // Could be same as subtotal or include taxes/discounts
+  vendor?: string;
+  receiptUrl?: string; // URL to receipt image in Firebase Storage
+  enteredByUid: string;
+  enteredByName: string;
+  createdAt: Date; // Timestamp in Firestore
+}
+
+// Add other types as needed for milestones, tenants etc.

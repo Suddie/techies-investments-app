@@ -32,9 +32,9 @@ export const APP_NAME = "Techies Investments App";
 export const NAVIGATION_LINKS = [
   { href: "/dashboard", label: "Dashboard", icon: "LayoutDashboard", adminOnly: false, requiredAccessLevel: 3 },
   { href: "/contributions", label: "Contributions", icon: "HandCoins", adminOnly: false, requiredAccessLevel: 3 },
+  { href: "/expenses", label: "Expenses", icon: "CreditCard", adminOnly: false, requiredAccessLevel: 3 },
   { href: "/reports", label: "Reports", icon: "FileText", adminOnly: false, requiredAccessLevel: 2 },
   { href: "/admin/users", label: "User Management", icon: "Users", adminOnly: true, requiredAccessLevel: 1 },
-  // { href: "/admin/settings", label: "Settings", icon: "Settings", adminOnly: true, requiredAccessLevel: 1 }, // Removed from sidebar
-  // Add more links for other features like expenses, project management etc.
+  // Add more links for other features like project management etc.
 ];
 
