@@ -30,7 +30,7 @@ export interface Contribution {
 
 export interface GlobalSettings {
   appName: string;
-  logoUrl?: string | null;
+  logoUrl: string | null; // Ensure this can be null
   invoiceLogoUrl?: string | null;
   useAppLogoForInvoice?: boolean;
   contributionMin?: number;
