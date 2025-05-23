@@ -10,11 +10,25 @@ export interface UserProfile {
   requiresPasswordChange?: boolean;
   status?: 'Active' | 'Inactive';
   photoURL?: string | null;
+  createdAt?: any; // Firestore serverTimestamp or Date
+  // lastLoginAt?: any; // Consider adding this
 }
 
 export type UserRole = 'Admin' | 'Treasurer' | 'Vice Treasurer' | 'Chairman' | 'Vice Chairman' | 'Investment Lead' | 'Secretary' | 'Member' | 'Finance Professional';
 
 export type AccessLevel = 1 | 2 | 3;
+
+// This type is for the Zod schema and form values in UserForm.tsx
+// It might differ slightly from UserProfile (e.g., password field exists in form but not directly in UserProfile)
+export interface UserFormValues {
+  name: string;
+  email: string; // Required for new user creation
+  role: UserRole;
+  password?: string; // Optional for edit, required for new if creating auth user
+  status: 'Active' | 'Inactive';
+  requiresPasswordChange: boolean;
+}
+
 
 export interface Contribution {
   id?: string;
@@ -23,7 +37,7 @@ export interface Contribution {
   amount: number;
   penaltyPaidAmount?: number;
   monthsCovered: string[]; // Array of 'YYYY-MM'
-  datePaid: Date;
+  datePaid: Date; // Will be Firestore Timestamp
   isLate?: boolean;
   notes?: string;
 }
@@ -55,7 +69,7 @@ export interface NotificationMessage {
 
 export interface Expense {
   id?: string; // Firestore document ID
-  date: Date; // Timestamp in Firestore
+  date: any; // Will be Firestore Timestamp, use `any` for form flexibility, convert before saving
   description: string;
   category: string; // e.g., 'Office Supplies', 'Utilities', 'Project Material'
   quantity: number;
@@ -66,7 +80,7 @@ export interface Expense {
   receiptUrl?: string; // URL to receipt image in Firebase Storage
   enteredByUid: string;
   enteredByName: string;
-  createdAt: Date; // Timestamp in Firestore
+  createdAt: any; // Firestore Timestamp or Date
 }
 
 // Add other types as needed for milestones, tenants etc.

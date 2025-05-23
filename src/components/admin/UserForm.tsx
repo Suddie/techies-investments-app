@@ -21,40 +21,45 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import type { UserProfile, UserRole } from '@/lib/types';
+import type { UserProfile, UserRole, UserFormValues as UserFormSchemaValues } from '@/lib/types'; // Updated import
 import { ROLES } from '@/lib/constants';
-import { DialogFooter, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"; // Assuming used in a dialog
+import { DialogFooter, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"; 
 import React, { useEffect, useState } from "react";
 
 const rolesArray = Object.keys(ROLES) as UserRole[];
 
-const userFormSchema = z.object({
+// Schema for the form
+const userFormZodSchema = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters." }),
   email: z.string().email({ message: "Invalid email address." }),
   role: z.enum(rolesArray),
-  password: z.string().optional(), // Optional: only for new users or if resetting
+  password: z.string().optional(), // Password handling is conditional
   status: z.enum(['Active', 'Inactive']),
   requiresPasswordChange: z.boolean().default(true),
+}).superRefine((data, ctx) => {
+  // Conditionally require password if it's a new user (user prop is not passed)
+  // This refinement is tricky here because `user` prop isn't part of `data`.
+  // This logic is better handled in the onSubmit or by passing a flag to the schema.
+  // For now, password validation will be handled in the `handleSubmit` function.
 });
 
-type UserFormValues = z.infer<typeof userFormSchema>;
 
 interface UserFormProps {
   user?: UserProfile | null; // For editing existing user
-  onSave: (data: UserFormValues, userId?: string) => Promise<void>;
+  onSave: (data: UserFormSchemaValues, userId?: string) => Promise<void>;
   onCancel: () => void;
 }
 
 export default function UserForm({ user, onSave, onCancel }: UserFormProps) {
   const [isLoading, setIsLoading] = useState(false);
   
-  const form = useForm<UserFormValues>({
-    resolver: zodResolver(userFormSchema),
+  const form = useForm<UserFormSchemaValues>({ // Use the imported type
+    resolver: zodResolver(userFormZodSchema), // Use the Zod schema
     defaultValues: {
       name: user?.name || "",
       email: user?.email || "",
       role: user?.role || "Member",
-      password: "",
+      password: "", // Always start with empty password field
       status: user?.status || 'Active',
       requiresPasswordChange: user ? user.requiresPasswordChange ?? true : true,
     },
@@ -64,9 +69,9 @@ export default function UserForm({ user, onSave, onCancel }: UserFormProps) {
     if (user) {
       form.reset({
         name: user.name || "",
-        email: user.email || "",
+        email: user.email || "", // Email will be disabled for edit, but good to have it in form state
         role: user.role || "Member",
-        password: "", // Password not pre-filled for editing
+        password: "", // Password not pre-filled
         status: user.status || 'Active',
         requiresPasswordChange: user.requiresPasswordChange ?? true,
       });
@@ -83,33 +88,38 @@ export default function UserForm({ user, onSave, onCancel }: UserFormProps) {
   }, [user, form]);
 
 
-  const handleSubmit = async (data: UserFormValues) => {
+  const handleSubmit = async (data: UserFormSchemaValues) => {
     setIsLoading(true);
-    // For new users, password is required. Add custom validation if needed or adjust schema.
-    if (!user && !data.password) {
-        form.setError("password", { type: "manual", message: "Password is required for new users." });
+    // For new users, password is required.
+    if (!user && (!data.password || data.password.length < 6)) {
+        form.setError("password", { type: "manual", message: "Password is required for new users and must be at least 6 characters." });
         setIsLoading(false);
         return;
     }
-    if (user && data.password && data.password.length < 6) {
+    // If editing an existing user AND a new password is provided, it must be at least 6 characters.
+    if (user && data.password && data.password.length > 0 && data.password.length < 6) {
         form.setError("password", { type: "manual", message: "New password must be at least 6 characters." });
         setIsLoading(false);
         return;
     }
+    // If editing existing user and password field is empty, it means don't change the password.
+    // The onSave handler will decide what to do with an empty password for existing user (i.e., ignore it).
+    
     await onSave(data, user?.uid);
     setIsLoading(false);
+    // Dialog closing and state reset is handled by parent page (admin/users/page.tsx)
   };
 
   return (
     <>
       <DialogHeader>
-        <DialogTitle>{user ? "Edit User" : "Add New User"}</DialogTitle>
+        <DialogTitle>{user ? "Edit User Profile" : "Add New User"}</DialogTitle>
         <DialogDescription>
-          {user ? `Update details for ${user.name}.` : "Fill in the details to create a new user account."}
+          {user ? `Update profile details for ${user.name}. Email cannot be changed.` : "Fill in the details to create a new user account and Firestore profile. This will log you (Admin) in as the new user temporarily."}
         </DialogDescription>
       </DialogHeader>
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4 py-4">
+        <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-2">
           <FormField
             control={form.control}
             name="name"
@@ -136,36 +146,28 @@ export default function UserForm({ user, onSave, onCancel }: UserFormProps) {
               </FormItem>
             )}
           />
-          {!user && ( // Only show password field for new users or explicitly for reset
-            <FormField
-              control={form.control}
-              name="password"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Initial Password</FormLabel>
-                  <FormControl>
-                    <Input type="password" placeholder="••••••••" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          )}
-          {user && ( // Option to set new password for existing user
-             <FormField
-              control={form.control}
-              name="password"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>New Password (Optional)</FormLabel>
-                  <FormControl>
-                    <Input type="password" placeholder="Leave blank to keep current" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          )}
+          {/* Password field behavior:
+              - For new users (!user): Show "Initial Password", it's required.
+              - For existing users (user): Show "New Password (Optional)".
+                                         If filled, attempt to change. If blank, password remains unchanged.
+                                         (Note: Admin changing other user's password client-side is complex and often not done this way)
+          */}
+          <FormField
+            control={form.control}
+            name="password"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{!user ? "Initial Password" : "New Password (Leave blank to keep current)"}</FormLabel>
+                <FormControl>
+                  <Input type="password" placeholder="••••••••" {...field} />
+                </FormControl>
+                <FormMessage />
+                {!user && <p className="text-xs text-muted-foreground pt-1">Minimum 6 characters.</p>}
+                {user && field.value && field.value.length > 0 && <p className="text-xs text-muted-foreground pt-1">Minimum 6 characters if changing.</p>}
+              </FormItem>
+            )}
+          />
+          
           <FormField
             control={form.control}
             name="role"
@@ -215,7 +217,7 @@ export default function UserForm({ user, onSave, onCancel }: UserFormProps) {
             control={form.control}
             name="requiresPasswordChange"
             render={({ field }) => (
-              <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
+              <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm bg-background">
                 <div className="space-y-0.5">
                   <FormLabel>Require Password Change on Next Login</FormLabel>
                  </div>
@@ -233,7 +235,7 @@ export default function UserForm({ user, onSave, onCancel }: UserFormProps) {
               Cancel
             </Button>
             <Button type="submit" disabled={isLoading}>
-              {isLoading ? (user ? "Saving..." : "Creating...") : (user ? "Save Changes" : "Create User")}
+              {isLoading ? (user ? "Saving Profile..." : "Creating User...") : (user ? "Save Changes" : "Create User & Profile")}
             </Button>
           </DialogFooter>
         </form>
