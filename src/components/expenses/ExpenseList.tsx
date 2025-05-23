@@ -47,7 +47,12 @@ export default function ExpenseList({ onEditExpense }: ExpenseListProps) {
       setLoading(false);
     }, (error) => {
       console.error("Error fetching expenses: ", error);
-      toast({ title: "Error", description: "Could not fetch expenses.", variant: "destructive"});
+      toast({ 
+        title: "Permission Error Fetching Expenses", 
+        description: "Could not fetch expenses. This might be due to insufficient permissions or missing user profile data in Firestore (e.g., 'accessLevel'). Please ensure your user profile is correctly set up in the database by an admin.", 
+        variant: "destructive",
+        duration: 10000, // Show longer
+      });
       setLoading(false);
     });
 

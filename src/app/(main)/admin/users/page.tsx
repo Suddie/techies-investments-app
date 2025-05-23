@@ -1,3 +1,4 @@
+
 "use client";
 
 import PageHeader from "@/components/common/PageHeader";
@@ -48,20 +49,21 @@ export default function UserManagementPage() {
     // Example (conceptual - Cloud Function 'createUser' would need to be deployed):
     // const userManagementFunction = httpsCallable(functions, userId ? 'updateUser' : 'createUser');
     try {
-      console.log("Saving user (mock operation):", { ...data, uid: userId });
+      console.log("Saving user (MOCK OPERATION - Not saving to Firestore):", { ...data, uid: userId });
       // await userManagementFunction({ userData: data, userId }); 
       // Mocking success:
       toast({
-        title: `User ${userId ? 'updated' : 'created'} successfully!`,
-        description: `${data.name} (${data.email}) has been ${userId ? 'updated' : 'added'}. (Mock Operation)`,
+        title: `User ${userId ? 'updated' : 'created'} successfully! (Mock Operation)`,
+        description: `${data.name} (${data.email}) has been ${userId ? 'updated' : 'added'}. IMPORTANT: This change is NOT saved to the database. User profiles must be managed directly in Firestore for permissions to apply correctly.`,
+        duration: 10000,
       });
       setIsUserFormOpen(false);
       setEditingUser(null);
-      // Here you would typically re-fetch or update the user list state
+      // Here you would typically re-fetch or update the user list state if it were live data
     } catch (error: any) {
       console.error("Error saving user:", error);
       toast({
-        title: "Error saving user",
+        title: "Error saving user (Mock Operation)",
         description: error.message || "An unknown error occurred.",
         variant: "destructive",
       });
