@@ -100,4 +100,15 @@ export interface Milestone {
   updatedAt?: any;
 }
 
+// Form values for MilestoneForm
+export interface MilestoneFormValues {
+  name: string;
+  description?: string;
+  targetAmount: number;
+  targetDate?: Date;
+  status: MilestoneStatus;
+  actualCompletionDate?: Date;
+}
+
+
 // Add other types as needed for tenants etc.
