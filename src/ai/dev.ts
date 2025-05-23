@@ -1,4 +1,4 @@
 import { config } from 'dotenv';
 config();
 
-import '@/ai/flows/summarize-data-for-role.ts';
+// Removed import for summarize-data-for-role.ts as the feature is being deleted.

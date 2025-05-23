@@ -32,7 +32,6 @@ export const NAVIGATION_LINKS = [
   { href: "/dashboard", label: "Dashboard", icon: "LayoutDashboard", adminOnly: false, requiredAccessLevel: 3 },
   { href: "/contributions", label: "Contributions", icon: "HandCoins", adminOnly: false, requiredAccessLevel: 3 },
   { href: "/reports", label: "Reports", icon: "FileText", adminOnly: false, requiredAccessLevel: 2 },
-  { href: "/ai-summary", label: "AI Summary", icon: "BrainCircuit", adminOnly: false, requiredAccessLevel: 2 },
   { href: "/admin/users", label: "User Management", icon: "Users", adminOnly: true, requiredAccessLevel: 1 },
   // Add more links for other features like expenses, project management etc.
   // { href: "/admin/settings", label: "Settings", icon: "Settings", adminOnly: true, requiredAccessLevel: 1 },
