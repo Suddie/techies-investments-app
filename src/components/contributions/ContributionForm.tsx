@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -13,35 +14,26 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, Check, ChevronsUpDown } from "lucide-react";
-import { Calendar } from "@/components/ui/calendar";
+import { Check, ChevronsUpDown } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { format, addMonths, subMonths } from "date-fns";
-import { useState, useMemo } from "react";
+import { format, addMonths, subMonths, getYear, getMonth } from "date-fns";
+import React, { useState, useMemo, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthProvider";
 import { useSettings } from "@/contexts/SettingsProvider";
 import { useFirebase } from "@/contexts/FirebaseProvider";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 
-
-const currentYear = new Date().getFullYear();
-const currentMonth = new Date().getMonth(); // 0-11
 
 const generateMonthOptions = () => {
-  const options = [];
-  const startDate = subMonths(new Date(currentYear, currentMonth, 1), 12);
-  const endDate = addMonths(new Date(currentYear, currentMonth, 1), 12);
+  const options: { value: string; label: string }[] = [];
+  const today = new Date();
+  const startDate = subMonths(new Date(getYear(today), getMonth(today), 1), 12); // 12 months ago
+  const endDate = addMonths(new Date(getYear(today), getMonth(today), 1), 12); // 12 months ahead
 
   let currentDate = startDate;
   while (currentDate <= endDate) {
@@ -51,7 +43,7 @@ const generateMonthOptions = () => {
     });
     currentDate = addMonths(currentDate, 1);
   }
-  return options;
+  return options.sort((a, b) => a.value.localeCompare(b.value)); // Sort chronologically
 };
 
 
@@ -66,54 +58,61 @@ export default function ContributionForm() {
   
   const formSchema = z.object({
     amount: z.coerce.number()
-      .min(settings.contributionMin || 0, `Minimum contribution is ${settings.currencySymbol}${settings.contributionMin || 0}`)
-      .max(settings.contributionMax || Infinity, `Maximum contribution is ${settings.currencySymbol}${settings.contributionMax || Infinity}`),
+      .min(settings.contributionMin || 1, `Minimum contribution is ${settings.currencySymbol}${settings.contributionMin || 1}`)
+      .max(settings.contributionMax || Infinity, `Maximum contribution is ${settings.currencySymbol}${settings.contributionMax || 'Unlimited'}`),
     monthsCovered: z.array(z.string()).min(1, "Please select at least one month."),
-    notes: z.string().optional(),
+    notes: z.string().max(500, "Notes are too long.").optional(),
   });
-
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
-    defaultValues: {
-      amount: settings.contributionMin || 0,
-      monthsCovered: [],
-      notes: "",
-    },
+    // Default values will be set in useEffect to reflect dynamic settings
   });
+  
+  useEffect(() => {
+    form.reset({
+        amount: settings.contributionMin || 0,
+        monthsCovered: [],
+        notes: "",
+    });
+  }, [settings.contributionMin, form]);
+
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     if (!userProfile) {
-      toast({ title: "Error", description: "User not authenticated.", variant: "destructive" });
+      toast({ title: "Authentication Error", description: "You must be logged in to make a contribution.", variant: "destructive" });
       return;
     }
+    if (userProfile.accessLevel > 3) {
+        toast({ title: "Permission Denied", description: "You do not have permission to make contributions.", variant: "destructive" });
+        return;
+    }
+
     setLoading(true);
     try {
-      // In a real app, this would go to a 'contributions' collection
-      // For now, we'll just log it and show a success toast
       const contributionData = {
         userId: userProfile.uid,
         memberName: userProfile.name,
         amount: values.amount,
-        monthsCovered: values.monthsCovered,
-        datePaid: serverTimestamp(), // Use serverTimestamp for Firestore
-        isLate: false, // This would be determined by system logic (e.g. Cloud Function)
+        monthsCovered: values.monthsCovered.sort(), // Ensure months are sorted
+        datePaid: serverTimestamp(), 
+        isLate: false, // Placeholder: actual logic would be server-side or more complex client-side
         notes: values.notes || "",
+        createdAt: serverTimestamp(),
       };
       
-      // Example: await addDoc(collection(db, "contributions"), contributionData);
-      console.log("Contribution submitted:", contributionData);
+      await addDoc(collection(db, "contributions"), contributionData);
 
       toast({
-        title: "Contribution Submitted",
-        description: `Amount: ${settings.currencySymbol}${values.amount} for ${values.monthsCovered.join(', ')}`,
+        title: "Contribution Submitted Successfully!",
+        description: `Your contribution of ${settings.currencySymbol}${values.amount} for ${values.monthsCovered.join(', ')} has been recorded.`,
       });
       form.reset({ amount: settings.contributionMin || 0, monthsCovered: [], notes: "" });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error submitting contribution:", error);
       toast({
-        title: "Submission Failed",
-        description: "Could not submit contribution. Please try again.",
+        title: "Contribution Submission Failed",
+        description: error.message || "Could not submit contribution. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -122,10 +121,10 @@ export default function ContributionForm() {
   }
 
   return (
-    <Card className="w-full max-w-2xl mx-auto">
+    <Card className="w-full max-w-2xl mx-auto shadow-lg">
       <CardHeader>
         <CardTitle>Make a Contribution</CardTitle>
-        <CardDescription>Enter your contribution details below.</CardDescription>
+        <CardDescription>Fill in the details for your contribution. Ensure all information is accurate.</CardDescription>
       </CardHeader>
       <CardContent>
         <Form {...form}>
@@ -137,7 +136,7 @@ export default function ContributionForm() {
                 <FormItem>
                   <FormLabel>Amount ({settings.currencySymbol})</FormLabel>
                   <FormControl>
-                    <Input type="number" placeholder={`e.g. ${settings.contributionMin}`} {...field} />
+                    <Input type="number" placeholder={`e.g. ${settings.contributionMin || 1000}`} {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -157,7 +156,7 @@ export default function ContributionForm() {
                           variant="outline"
                           role="combobox"
                           className={cn(
-                            "w-full justify-between",
+                            "w-full justify-between min-h-[2.5rem]", // Ensure consistent height with Input
                             !field.value?.length && "text-muted-foreground"
                           )}
                         >
@@ -168,23 +167,23 @@ export default function ContributionForm() {
                         </Button>
                       </FormControl>
                     </PopoverTrigger>
-                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                    <PopoverContent className="w-[--radix-popover-trigger-width] max-h-[300px] p-0">
                       <Command>
                         <CommandInput placeholder="Search months..." />
-                        <CommandEmpty>No months found.</CommandEmpty>
                         <CommandList>
+                            <CommandEmpty>No months found.</CommandEmpty>
                             <CommandGroup>
                             {monthOptions.map((option) => (
                                 <CommandItem
-                                key={option.value}
-                                value={option.label} // value here is for search, not the form value
-                                onSelect={() => {
-                                    const currentValue = field.value || [];
-                                    const newValue = currentValue.includes(option.value)
-                                    ? currentValue.filter((v) => v !== option.value)
-                                    : [...currentValue, option.value];
-                                    field.onChange(newValue);
-                                }}
+                                  key={option.value}
+                                  value={option.label} // value here is for search, not the form value
+                                  onSelect={() => {
+                                      const currentValue = field.value || [];
+                                      const newValue = currentValue.includes(option.value)
+                                      ? currentValue.filter((v) => v !== option.value)
+                                      : [...currentValue, option.value];
+                                      field.onChange(newValue.sort()); // Keep selected values sorted
+                                  }}
                                 >
                                 <Check
                                     className={cn(
@@ -215,8 +214,9 @@ export default function ContributionForm() {
                   <FormLabel>Notes (Optional)</FormLabel>
                   <FormControl>
                     <Textarea
-                      placeholder="Any additional notes for this contribution..."
+                      placeholder="Any additional notes for this contribution (e.g., payment method, reference)..."
                       className="resize-none"
+                      rows={3}
                       {...field}
                     />
                   </FormControl>
@@ -224,7 +224,7 @@ export default function ContributionForm() {
                 </FormItem>
               )}
             />
-            <Button type="submit" className="w-full" disabled={loading}>
+            <Button type="submit" className="w-full" disabled={loading || !userProfile || userProfile.accessLevel > 3}>
               {loading ? "Submitting..." : "Submit Contribution"}
             </Button>
           </form>
@@ -233,6 +233,3 @@ export default function ContributionForm() {
     </Card>
   );
 }
-
-// For Shadcn UI Card
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";

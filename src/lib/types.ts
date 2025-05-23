@@ -1,3 +1,4 @@
+
 export interface UserProfile {
   uid: string;
   email: string | null;
@@ -31,15 +32,16 @@ export interface UserFormValues {
 
 
 export interface Contribution {
-  id?: string;
+  id?: string; // Firestore document ID
   userId: string;
-  memberName: string;
+  memberName: string | null; // From UserProfile.name
   amount: number;
   penaltyPaidAmount?: number;
   monthsCovered: string[]; // Array of 'YYYY-MM'
-  datePaid: Date; // Will be Firestore Timestamp
+  datePaid: any; // Firestore serverTimestamp or Date
   isLate?: boolean;
   notes?: string;
+  createdAt?: any; // Firestore serverTimestamp or Date
 }
 
 export interface GlobalSettings {

@@ -1,3 +1,4 @@
+
 "use client";
 
 import PageHeader from "@/components/common/PageHeader";
@@ -5,10 +6,11 @@ import ContributionForm from "@/components/contributions/ContributionForm";
 import ContributionList from "@/components/contributions/ContributionList";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import ProtectedRoute from "@/components/common/ProtectedRoute";
 
 export default function ContributionsPage() {
   return (
-    <>
+    <ProtectedRoute requiredAccessLevel={3}>
       <PageHeader
         title="Contributions"
         description="Manage your contributions and view your payment history."
@@ -25,6 +27,6 @@ export default function ContributionsPage() {
           <ContributionList />
         </TabsContent>
       </Tabs>
-    </>
+    </ProtectedRoute>
   );
 }
