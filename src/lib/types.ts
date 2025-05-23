@@ -87,3 +87,4 @@ export interface Expense {
 
 // Add other types as needed for milestones, tenants etc.
 
+
