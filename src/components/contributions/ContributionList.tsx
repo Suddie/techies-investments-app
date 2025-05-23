@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -65,7 +66,7 @@ export default function ContributionList() {
               <TableRow key={contrib.id}>
                 <TableCell>{format(contrib.datePaid, "PPP")}</TableCell>
                 <TableCell>{contrib.amount.toLocaleString()}</TableCell>
-                <TableCell>{contrib.monthsCovered.map(m => format(new Date(m + '-02'), "MMM yyyy")).join(', ')}</TableCell> {/* Add day to parse correctly */}
+                <TableCell>{contrib.monthsCovered.map(m => format(new Date(m + '-02'), "MMM yyyy")).join(', ')}</TableCell>
                 <TableCell>
                   {contrib.isLate ? (
                     <Badge variant="destructive">Late</Badge>
