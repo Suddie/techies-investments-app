@@ -17,7 +17,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requiredAcces
   const { user, userProfile, loading } = useAuth();
   const router = useRouter();
 
-  useEffect(() A => {
+  useEffect(() => {
     if (!loading) {
       if (!user) {
         router.push('/login');
