@@ -33,20 +33,27 @@ export default function UserManagementPage() {
   };
 
   const handleSaveUser = async (data: any, userId?: string) => {
-    // In a real app, call a Firebase Cloud Function to create/update user
-    // This function would use Firebase Admin SDK.
-    // For createUserWithEmailAndPassword client-side by Admin, admin session would switch.
-    // That needs careful handling (logout admin, new user logs in, changes pw, admin logs back in).
-    // Cloud Function is safer for admin user creation.
-    
+    // IMPORTANT: As per requirements (5.1. User Creation):
+    // If creating users client-side using Firebase's createUserWithEmailAndPassword,
+    // the Admin's current authentication session WILL BE REPLACED by the new user's session.
+    // This means the Admin will be effectively logged out and the new user logged in.
+    // The Admin would then need to manually log out and log back in with their own credentials.
+    // This is often undesirable.
+    //
+    // RECOMMENDED ALTERNATIVE: Use a Firebase Cloud Function callable by an authenticated Admin.
+    // This function would use the Firebase Admin SDK to create the new user,
+    // which does NOT affect the calling Admin's client-side session.
+    // This provides a much smoother and safer experience for the Admin.
+    //
+    // Example (conceptual - Cloud Function 'createUser' would need to be deployed):
     // const userManagementFunction = httpsCallable(functions, userId ? 'updateUser' : 'createUser');
     try {
-      console.log("Saving user:", { ...data, uid: userId });
+      console.log("Saving user (mock operation):", { ...data, uid: userId });
       // await userManagementFunction({ userData: data, userId }); 
       // Mocking success:
       toast({
         title: `User ${userId ? 'updated' : 'created'} successfully!`,
-        description: `${data.name} (${data.email}) has been ${userId ? 'updated' : 'added'}.`,
+        description: `${data.name} (${data.email}) has been ${userId ? 'updated' : 'added'}. (Mock Operation)`,
       });
       setIsUserFormOpen(false);
       setEditingUser(null);
