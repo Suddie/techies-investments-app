@@ -4,7 +4,7 @@ import PageHeader from "@/components/common/PageHeader";
 import UserTable from "@/components/admin/UserTable";
 import UserForm from "@/components/admin/UserForm";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, LogOut } from "lucide-react";
+import { PlusCircle, LogOut, AlertTriangle } from "lucide-react"; // Added AlertTriangle
 import {
   Dialog,
   DialogContent,
