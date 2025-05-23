@@ -9,104 +9,95 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isUser(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
     // Function to get user's access level from their profile in 'users' collection
-    // Returns access level (1, 2, 3) or 4 if not found/error (most restrictive)
+    // Returns 4 if user profile not found or accessLevel not set (most restrictive)
     function getUserAccessLevel(userId) {
-      let userDoc = get(/databases/$(database)/documents/users/$(userId));
-      // Check if userDoc exists and has accessLevel field
-      return userDoc.data.accessLevel != null ? userDoc.data.accessLevel : 4;
+      let userProfile = get(/databases/$(database)/documents/users/$(userId)).data;
+      return userProfile != null && 'accessLevel' in userProfile ? userProfile.accessLevel : 4;
     }
     
-    // Function to check if user's status is 'Active'
-    function isUserActive(userId) {
-      let userDoc = get(/databases/$(database)/documents/users/$(userId));
-      return userDoc.data.status == 'Active';
-    }
-
-    // Users Collection
-    // User profiles, roles, and access levels
-    match /users/{userId} {
-      allow read: if isAuthenticated(); // Any authenticated user can read any profile (e.g., for member lists)
-      // allow read: if isAuthenticated() && (request.auth.uid == userId || getUserAccessLevel(request.auth.uid) <= 1); // Or more restrictive: Own profile or Admin
-      allow create: if isAuthenticated() && getUserAccessLevel(request.auth.uid) == 1; // Only Admins (Level 1) can create users
-      allow update: if isAuthenticated() && 
-                      (request.auth.uid == userId || getUserAccessLevel(request.auth.uid) == 1) &&
-                      isUserActive(request.auth.uid); // User can update their own profile, or Admin can update any. Requesting user must be active.
-                      // Prevent users from elevating their own accessLevel or role directly unless they are admin
-                      // Prevent changing email directly if not admin (complex auth interaction)
-      allow delete: if isAuthenticated() && getUserAccessLevel(request.auth.uid) == 1 && isUserActive(request.auth.uid); // Only Admins can delete
-
-      // Field-level validation for update:
-      // - Cannot change 'uid' or 'email' (email change should be handled via auth process or admin function)
-      // - 'role' and 'accessLevel' can only be changed by Admin (Level 1)
-      // - 'status' can be changed by Admin
-      // - 'requiresPasswordChange' can be changed by self or Admin
-      // - Other fields like 'name', 'photoURL', 'tpin' can be changed by self or Admin
-      // Example: allow update: if request.auth.uid == userId && !("email" in request.resource.data && request.resource.data.email != resource.data.email);
+    function hasAccessLevel(userId, requiredLevel) {
+        let userLevel = getUserAccessLevel(userId);
+        return userLevel <= requiredLevel;
     }
 
     // Settings Collection
-    // Global application settings
-    match /settings/global_settings {
-      allow read: if isAuthenticated(); // Any authenticated user can read global settings
-      allow write: if isAuthenticated() && getUserAccessLevel(request.auth.uid) == 1 && isUserActive(request.auth.uid); // Only Admins (Level 1) can write
+    match /settings/{settingId} {
+      // Only authenticated users can read global settings.
+      allow read: if isAuthenticated();
+      // Only Admins (Level 1) can write to global settings.
+      allow write: if isAuthenticated() && hasAccessLevel(request.auth.uid, 1);
     }
-    
+
+    // Users Collection
+    match /users/{userId} {
+      // Users can read their own profile.
+      // Admins (Level 1) can read any user profile.
+      allow read: if isUser(userId) || hasAccessLevel(request.auth.uid, 1);
+      
+      // Users can update their own profile (e.g., name, tpin - assuming tpin is managed securely).
+      // Admins (Level 1) can update any user profile (role, status, requiresPasswordChange).
+      // For create: Admin creates new users. Firebase Auth handles actual user creation.
+      // This rule allows an Admin to create the Firestore document for a user they just created in Auth.
+      allow create: if isAuthenticated() && hasAccessLevel(request.auth.uid, 1);
+      allow update: if isUser(userId) || hasAccessLevel(request.auth.uid, 1);
+      
+      // Generally, users should not delete their own profiles directly. Deactivation is preferred.
+      // Admins (Level 1) can delete user profiles (use with caution).
+      allow delete: if isAuthenticated() && hasAccessLevel(request.auth.uid, 1);
+    }
+
     // Contributions Collection
     match /contributions/{contributionId} {
+      // Users can read their own contributions.
+      // Admins (Level 1) can read all contributions.
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || hasAccessLevel(request.auth.uid, 1));
+      
+      // Users with access level 3 or better can create their own contributions.
+      // Validate that the contribution being created is for the authenticated user.
       allow create: if isAuthenticated() && 
-                       request.auth.uid == request.resource.data.userId && 
-                       getUserAccessLevel(request.auth.uid) <= 3 &&
-                       isUserActive(request.auth.uid) &&
-                       request.resource.data.amount > 0 && // Basic validation
-                       request.resource.data.monthsCovered.size() > 0; 
-                       // TODO: Validate amount against global_settings.contributionMin/Max (requires reading another doc, can be complex/costly in rules)
-                       // For now, rely on client-side + Cloud Function for this stricter validation.
-      allow read: if isAuthenticated() && 
-                     (request.auth.uid == resource.data.userId || getUserAccessLevel(request.auth.uid) <= 1); // User can read own, Admin/Treasurer (L1) can read all.
-      allow update: if false; // Generally, contributions should be immutable or updated via backend/admin functions.
-      allow delete: if false; // Deletion typically handled by Admin functions or soft delete.
+                      hasAccessLevel(request.auth.uid, 3) && 
+                      request.resource.data.userId == request.auth.uid &&
+                      request.resource.data.amount > 0; // Basic validation
+                      // More complex validation (min/max amount from settings) might need Cloud Functions
+                      // or passing settings values in the request for rule checking if feasible.
+
+      // Generally, contributions should not be updatable or deletable by users after creation.
+      // Admins (Level 1) might be allowed to correct/update.
+      allow update: if isAuthenticated() && hasAccessLevel(request.auth.uid, 1);
+      allow delete: if isAuthenticated() && hasAccessLevel(request.auth.uid, 1);
     }
 
     // Expenses Collection
     match /expenses/{expenseId} {
-        allow create: if isAuthenticated() && 
-                         getUserAccessLevel(request.auth.uid) == 1 && // Only Level 1 can create
-                         isUserActive(request.auth.uid) &&
-                         request.resource.data.totalAmount > 0 &&
-                         request.resource.data.enteredByUid == request.auth.uid;
-        allow read: if isAuthenticated(); // Any authenticated user can read expenses
-        allow update: if isAuthenticated() && 
-                         getUserAccessLevel(request.auth.uid) == 1 && // Only Level 1 can update
-                         isUserActive(request.auth.uid) &&
-                         request.resource.data.enteredByUid == resource.data.enteredByUid; // Cannot change original submitter
-        allow delete: if isAuthenticated() && getUserAccessLevel(request.auth.uid) == 1 && isUserActive(request.auth.uid); // Only Level 1 can delete
-    }
-    
-    // Notifications Collection (Placeholder - rules depend on how notifications are targeted and managed)
-    match /notifications/{notificationId} {
-      // Example: Allow users to read their own notifications or 'all' notifications
-      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || resource.data.userId == 'all');
-      // Example: Allow users to mark their own notifications as read (update only 'isRead' field)
-      allow update: if isAuthenticated() && request.auth.uid == resource.data.userId && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead']);
-      // Creation of notifications often best handled by Cloud Functions or specific admin roles
-      allow create: if isAuthenticated() && getUserAccessLevel(request.auth.uid) == 1; // Example: Admins can create
-      allow delete: if false; // Typically soft delete or managed by TTL policies / backend
+        // Authenticated users can read expenses.
+        allow read: if isAuthenticated();
+        
+        // Users with Level 1 access (Admin, Treasurer) can create, update, delete expenses.
+        allow create, update, delete: if isAuthenticated() && hasAccessLevel(request.auth.uid, 1) &&
+                                      request.resource.data.totalAmount > 0 && // Validate amount
+                                      request.resource.data.enteredByUid == request.auth.uid; // Ensure creator is the one saving
     }
 
-    // Audit Log Collection (Placeholder - designed for immutability from client)
-    match /auditLog/{logId} {
-      allow read: if isAuthenticated(); // All authenticated users can view the log
-      allow create: if false; // Entries should be created by Cloud Functions
-      allow update: if false;
-      allow delete: if false;
+    // Milestones Collection
+    match /milestones/{milestoneId} {
+      // All authenticated users can read milestones.
+      allow read: if isAuthenticated();
+      // Only Level 1 users can create, update, or delete milestones.
+      allow create, update, delete: if isAuthenticated() && hasAccessLevel(request.auth.uid, 1);
     }
 
-    // Add rules for other collections (projects, stock, tenants, etc.) as they are implemented.
-    // Example:
-    // match /projects/{projectId} {
+    // Add rules for other collections (auditLog, stockItems, stockTransactions, tenants, rentInvoices, professionals, bankBalances, bankTransactions, companyInfo) as they are implemented.
+    // Example for immutable auditLog:
+    // match /auditLog/{logId} {
     //   allow read: if isAuthenticated();
-    //   allow write: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 2; // Example: Level 1 & 2
+    //   allow create: if isAuthenticated(); // Or restrict to Cloud Functions
+    //   allow update, delete: if false; 
     // }
+
   }
 }

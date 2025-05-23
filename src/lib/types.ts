@@ -85,6 +85,19 @@ export interface Expense {
   createdAt: any; // Firestore Timestamp or Date
 }
 
-// Add other types as needed for milestones, tenants etc.
+export type MilestoneStatus = 'Not Started' | 'In Progress' | 'Completed' | 'On Hold' | 'Cancelled';
 
+export interface Milestone {
+  id?: string; // Firestore document ID
+  name: string;
+  description?: string;
+  targetAmount: number; // in base currency (e.g., MK)
+  targetDate?: any; // Firestore Timestamp or Date (Optional)
+  status: MilestoneStatus;
+  actualCompletionDate?: any; // Firestore Timestamp or Date (Optional)
+  projectId?: string; // If you have multiple projects
+  createdAt?: any;
+  updatedAt?: any;
+}
 
+// Add other types as needed for tenants etc.

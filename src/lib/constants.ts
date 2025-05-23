@@ -25,8 +25,7 @@ export const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = { // Use the imported typ
   currencySymbol: "MK",
   contributionMin: 1000,
   contributionMax: 100000,
-  penaltyAmount: 500, // Added default penalty amount
-  // Initialize other GlobalSettings fields with defaults if necessary
+  penaltyAmount: 500,
   invoiceLogoUrl: null,
   useAppLogoForInvoice: false,
   invoiceCompanyName: "",
@@ -41,8 +40,8 @@ export const NAVIGATION_LINKS = [
   { href: "/dashboard", label: "Dashboard", icon: "LayoutDashboard", adminOnly: false, requiredAccessLevel: 3 },
   { href: "/contributions", label: "Contributions", icon: "HandCoins", adminOnly: false, requiredAccessLevel: 3 },
   { href: "/expenses", label: "Expenses", icon: "CreditCard", adminOnly: false, requiredAccessLevel: 3 },
+  { href: "/milestones", label: "Project Milestones", icon: "ListChecks", adminOnly: false, requiredAccessLevel: 3 },
   { href: "/reports", label: "Reports", icon: "FileText", adminOnly: false, requiredAccessLevel: 2 },
   { href: "/admin/users", label: "User Management", icon: "Users", adminOnly: true, requiredAccessLevel: 1 },
   // Add more links for other features like project management etc.
 ];
-
