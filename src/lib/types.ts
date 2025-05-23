@@ -6,7 +6,7 @@ export interface UserProfile {
   role: UserRole;
   accessLevel: AccessLevel;
   shares?: number;
-  penaltyBalance?: number;
+  penaltyBalance?: number; // Added for dashboard mock
   tpin?: string; // Encrypted
   requiresPasswordChange?: boolean;
   status?: 'Active' | 'Inactive';
@@ -86,3 +86,4 @@ export interface Expense {
 }
 
 // Add other types as needed for milestones, tenants etc.
+

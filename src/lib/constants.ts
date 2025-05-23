@@ -1,5 +1,5 @@
 
-import type { UserRole, AccessLevel } from './types';
+import type { UserRole, AccessLevel, GlobalSettings } from './types'; // Ensure GlobalSettings is imported
 
 export const ROLES: Record<UserRole, { name: UserRole; accessLevel: AccessLevel }> = {
   Admin: { name: 'Admin', accessLevel: 1 },
@@ -19,12 +19,20 @@ export const ACCESS_LEVELS: Record<AccessLevel, string> = {
   3: 'Member View & Actions',
 };
 
-export const DEFAULT_GLOBAL_SETTINGS = {
+export const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = { // Use the imported type
   appName: "Techies Investments App",
   logoUrl: null,
   currencySymbol: "MK",
   contributionMin: 1000,
   contributionMax: 100000,
+  penaltyAmount: 500, // Added default penalty amount
+  // Initialize other GlobalSettings fields with defaults if necessary
+  invoiceLogoUrl: null,
+  useAppLogoForInvoice: false,
+  invoiceCompanyName: "",
+  invoiceAddress: "",
+  invoiceContact: "",
+  financialYearStart: "01-01",
 };
 
 export const APP_NAME = "Techies Investments App";

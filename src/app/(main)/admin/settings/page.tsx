@@ -9,10 +9,10 @@ import {
   Form,
   FormControl,
   FormField,
-  FormItem, // Keep for generalForm
-  FormLabel, // Keep for generalForm
+  FormItem,
+  FormLabel,
   FormMessage,
-  FormDescription, // Keep for generalForm
+  FormDescription,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,7 +27,7 @@ import React, { useEffect, useState, useRef } from "react";
 import ProtectedRoute from "@/components/common/ProtectedRoute";
 import Image from "next/image";
 import { UploadCloud, XCircle } from "lucide-react";
-import { Label } from "@/components/ui/label"; // Import basic Label
+import { Label } from "@/components/ui/label";
 
 const generalSettingsSchema = z.object({
   appName: z.string().min(3, "App name must be at least 3 characters.").max(50, "App name must be at most 50 characters."),
@@ -36,11 +36,21 @@ const generalSettingsSchema = z.object({
 
 type GeneralSettingsFormValues = z.infer<typeof generalSettingsSchema>;
 
+const financialSettingsSchema = z.object({
+  contributionMin: z.coerce.number().min(0, "Minimum contribution must be non-negative.").optional(),
+  contributionMax: z.coerce.number().min(0, "Maximum contribution must be non-negative.").optional(),
+  penaltyAmount: z.coerce.number().min(0, "Penalty amount must be non-negative.").optional(),
+});
+
+type FinancialSettingsFormValues = z.infer<typeof financialSettingsSchema>;
+
+
 export default function AdminSettingsPage() {
   const { settings, loading: settingsLoading } = useSettings();
-  const { db, storage } = useFirebase(); // Added storage
+  const { db, storage } = useFirebase();
   const { toast } = useToast();
-  const [isSaving, setIsSaving] = useState(false);
+  const [isSavingGeneral, setIsSavingGeneral] = useState(false);
+  const [isSavingFinancial, setIsSavingFinancial] = useState(false);
   const [selectedLogoFile, setSelectedLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(settings.logoUrl);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
@@ -50,7 +60,16 @@ export default function AdminSettingsPage() {
     resolver: zodResolver(generalSettingsSchema),
     defaultValues: {
       appName: settings.appName || "",
-      currencySymbol: settings.currencySymbol || "",
+      currencySymbol: settings.currencySymbol || "MK",
+    },
+  });
+
+  const financialForm = useForm<FinancialSettingsFormValues>({
+    resolver: zodResolver(financialSettingsSchema),
+    defaultValues: {
+      contributionMin: settings.contributionMin || 0,
+      contributionMax: settings.contributionMax || 0,
+      penaltyAmount: settings.penaltyAmount || 0,
     },
   });
 
@@ -58,14 +77,19 @@ export default function AdminSettingsPage() {
     if (!settingsLoading) {
       generalForm.reset({
         appName: settings.appName,
-        currencySymbol: settings.currencySymbol,
+        currencySymbol: settings.currencySymbol || "MK",
+      });
+      financialForm.reset({
+        contributionMin: settings.contributionMin,
+        contributionMax: settings.contributionMax,
+        penaltyAmount: settings.penaltyAmount,
       });
       setLogoPreview(settings.logoUrl);
     }
-  }, [settings, settingsLoading, generalForm]);
+  }, [settings, settingsLoading, generalForm, financialForm]);
 
   const handleSaveGeneralSettings = async (values: GeneralSettingsFormValues) => {
-    setIsSaving(true);
+    setIsSavingGeneral(true);
     try {
       const settingsDocRef = doc(db, "settings", "global_settings");
       await updateDoc(settingsDocRef, {
@@ -77,14 +101,39 @@ export default function AdminSettingsPage() {
         description: "General settings have been saved.",
       });
     } catch (error: any) {
-      console.error("Error updating settings:", error);
+      console.error("Error updating general settings:", error);
       toast({
         title: "Error",
-        description: `Failed to update settings: ${error.message}`,
+        description: `Failed to update general settings: ${error.message}`,
         variant: "destructive",
       });
     } finally {
-      setIsSaving(false);
+      setIsSavingGeneral(false);
+    }
+  };
+  
+  const handleSaveFinancialSettings = async (values: FinancialSettingsFormValues) => {
+    setIsSavingFinancial(true);
+    try {
+      const settingsDocRef = doc(db, "settings", "global_settings");
+      await updateDoc(settingsDocRef, {
+        contributionMin: values.contributionMin,
+        contributionMax: values.contributionMax,
+        penaltyAmount: values.penaltyAmount,
+      });
+      toast({
+        title: "Settings Updated",
+        description: "Financial settings have been saved.",
+      });
+    } catch (error: any) {
+      console.error("Error updating financial settings:", error);
+      toast({
+        title: "Error",
+        description: `Failed to update financial settings: ${error.message}`,
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingFinancial(false);
     }
   };
 
@@ -103,10 +152,6 @@ export default function AdminSettingsPage() {
     }
     setIsUploadingLogo(true);
     try {
-      // Optional: Delete old logo if it exists and we want to replace it
-      // For simplicity, this example doesn't delete the old logo from storage upon new upload,
-      // but you might want to add that if storage space is a concern.
-
       const logoFileName = `app_logo_${Date.now()}_${selectedLogoFile.name}`;
       const logoStorageRef = ref(storage, `settings/${logoFileName}`);
       await uploadBytes(logoStorageRef, selectedLogoFile);
@@ -116,8 +161,8 @@ export default function AdminSettingsPage() {
       await updateDoc(settingsDocRef, { logoUrl: downloadURL });
 
       setLogoPreview(downloadURL);
-      setSelectedLogoFile(null); // Clear selection
-      if (fileInputRef.current) fileInputRef.current.value = ""; // Reset file input
+      setSelectedLogoFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
 
       toast({ title: "Logo Uploaded", description: "Application logo has been updated." });
     } catch (error: any) {
@@ -129,25 +174,21 @@ export default function AdminSettingsPage() {
   };
 
   const handleRemoveLogo = async () => {
-    setIsUploadingLogo(true); // Re-use loading state for simplicity
+    setIsUploadingLogo(true);
     try {
-      // Optional: Delete the logo from Firebase Storage
       if (settings.logoUrl) {
         try {
           const oldLogoRef = ref(storage, settings.logoUrl);
           await deleteObject(oldLogoRef);
         } catch (storageError: any) {
-          // Log error but don't block UI if deletion fails (e.g. file not found, permissions)
           console.warn("Could not delete old logo from storage:", storageError.message);
         }
       }
-
       const settingsDocRef = doc(db, "settings", "global_settings");
       await updateDoc(settingsDocRef, { logoUrl: null });
       setLogoPreview(null);
       setSelectedLogoFile(null);
-       if (fileInputRef.current) fileInputRef.current.value = "";
-
+      if (fileInputRef.current) fileInputRef.current.value = "";
       toast({ title: "Logo Removed", description: "Application logo has been removed." });
     } catch (error: any) {
       console.error("Error removing logo:", error);
@@ -211,8 +252,8 @@ export default function AdminSettingsPage() {
                           </FormItem>
                         )}
                       />
-                      <Button type="submit" disabled={isSaving || settingsLoading}>
-                        {isSaving ? "Saving..." : "Save Details"}
+                      <Button type="submit" disabled={isSavingGeneral || settingsLoading}>
+                        {isSavingGeneral ? "Saving..." : "Save Details"}
                       </Button>
                     </form>
                   </Form>
@@ -238,8 +279,7 @@ export default function AdminSettingsPage() {
                         <p className="text-muted-foreground">No logo uploaded</p>
                       )}
                     </div>
-
-                    <div className="space-y-1"> {/* Replaced FormItem */}
+                    <div className="space-y-1">
                       <Label htmlFor="logo-upload">Upload New Logo</Label>
                       <Input
                         id="logo-upload"
@@ -249,9 +289,8 @@ export default function AdminSettingsPage() {
                         ref={fileInputRef}
                         className="text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
                       />
-                      <p className="text-sm text-muted-foreground">Recommended: Square logo, PNG or SVG.</p> {/* Replaced FormDescription */}
+                      <p className="text-sm text-muted-foreground">Recommended: Square logo, PNG or SVG.</p>
                     </div>
-
                     <div className="flex gap-2">
                       <Button onClick={handleUploadLogo} disabled={isUploadingLogo || !selectedLogoFile} className="flex-1">
                         <UploadCloud className="mr-2 h-4 w-4" />
@@ -275,12 +314,62 @@ export default function AdminSettingsPage() {
           <Card>
             <CardHeader>
               <CardTitle>Financial Settings</CardTitle>
-              <CardDescription>Configure contribution limits, penalties, etc. (Coming soon)</CardDescription>
+              <CardDescription>Configure contribution limits and penalty amounts.</CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-muted-foreground">
-                Minimum/Maximum contribution amounts, penalty settings, and other financial configurations will be managed here.
-              </p>
+              {settingsLoading ? (
+                <p>Loading financial settings...</p>
+              ) : (
+                <Form {...financialForm}>
+                  <form onSubmit={financialForm.handleSubmit(handleSaveFinancialSettings)} className="space-y-6">
+                    <FormField
+                      control={financialForm.control}
+                      name="contributionMin"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Minimum Contribution ({settings.currencySymbol})</FormLabel>
+                          <FormControl>
+                            <Input type="number" placeholder="e.g., 1000" {...field} onChange={e => field.onChange(parseFloat(e.target.value) || 0)} />
+                          </FormControl>
+                          <FormDescription>The minimum amount allowed for a single contribution.</FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={financialForm.control}
+                      name="contributionMax"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Maximum Contribution ({settings.currencySymbol})</FormLabel>
+                          <FormControl>
+                            <Input type="number" placeholder="e.g., 100000" {...field} onChange={e => field.onChange(parseFloat(e.target.value) || 0)} />
+                          </FormControl>
+                          <FormDescription>The maximum amount allowed for a single contribution. Set to 0 for no limit.</FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={financialForm.control}
+                      name="penaltyAmount"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Default Penalty Amount ({settings.currencySymbol})</FormLabel>
+                          <FormControl>
+                            <Input type="number" placeholder="e.g., 500" {...field} onChange={e => field.onChange(parseFloat(e.target.value) || 0)} />
+                          </FormControl>
+                          <FormDescription>The default amount charged for late contributions or other penalties.</FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <Button type="submit" disabled={isSavingFinancial || settingsLoading}>
+                      {isSavingFinancial ? "Saving..." : "Save Financial Settings"}
+                    </Button>
+                  </form>
+                </Form>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
