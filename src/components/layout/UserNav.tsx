@@ -1,3 +1,4 @@
+
 "use client";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -79,7 +80,7 @@ export function UserNav() {
             <span>Toggle Theme</span>
           </DropdownMenuItem>
           {userProfile.role === 'Admin' && (
-            <DropdownMenuItem onClick={() => router.push('/admin/settings')}> {/* Assuming an admin settings page */}
+            <DropdownMenuItem onClick={() => router.push('/admin/settings')}>
                 <Settings className="mr-2 h-4 w-4" />
                 <span>Settings</span>
             </DropdownMenuItem>
