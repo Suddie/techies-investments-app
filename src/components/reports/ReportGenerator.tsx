@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useRef, useCallback } from 'react';
@@ -14,6 +15,7 @@ import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import ReportView, { type ReportData } from './ReportView'; // Assuming ReportView component
 import { useSettings } from '@/contexts/SettingsProvider';
+import { cn } from "@/lib/utils"; // Added import
 
 type ReportType = 'member_statement' | 'financial_activity' | 'contribution_details' | 'penalty_details' | 'expense_details';
 
