@@ -1,0 +1,151 @@
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isUser(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Function to check user's access level by reading their profile.
+    // Assumes 'users/{userId}' document contains an 'accessLevel' field (number).
+    function getUserAccessLevel() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.accessLevel;
+    }
+
+    function hasAccessLevel(requiredLevel) {
+      if (!isAuthenticated()) {
+        return false;
+      }
+      let userLevel = getUserAccessLevel();
+      return userLevel is number && userLevel <= requiredLevel;
+    }
+
+    // Users Collection
+    // Path: /users/{userId}
+    match /users/{userId} {
+      // Read:
+      // - A user can read their own profile.
+      // - Users with access level 1 (e.g., Admin, Treasurer) can read any user profile.
+      allow read: if isUser(userId) || hasAccessLevel(1);
+
+      // Create:
+      // - A new user (authenticated) can create their own profile document.
+      // - Ensures essential fields are present and correctly associated.
+      allow create: if isUser(userId) &&
+                       request.resource.data.uid == userId &&
+                       request.resource.data.email == request.auth.token.email &&
+                       request.resource.data.name is string && request.resource.data.name.size() > 0 &&
+                       request.resource.data.role is string &&
+                       request.resource.data.accessLevel is number &&
+                       // Optional fields
+                       (!request.resource.data.containsKey('status') || request.resource.data.status is string) &&
+                       (!request.resource.data.containsKey('requiresPasswordChange') || request.resource.data.requiresPasswordChange is bool) &&
+                       (!request.resource.data.containsKey('photoURL') || request.resource.data.photoURL is string || request.resource.data.photoURL == null) &&
+                       (!request.resource.data.containsKey('shares') || request.resource.data.shares is number) &&
+                       (!request.resource.data.containsKey('penaltyBalance') || request.resource.data.penaltyBalance is number) &&
+                       (!request.resource.data.containsKey('tpin') || request.resource.data.tpin is string);
+
+
+      // Update:
+      // - A user can update specific fields of their own profile (name, photoURL, tpin, requiresPasswordChange from true to false).
+      // - Users with access level 1 can update more comprehensive fields of any user profile.
+      allow update: if (isUser(userId) &&
+                        // User can only update limited fields on their own profile
+                        (request.resource.data.diff(resource.data).affectedKeys()
+                           .hasOnly(['name', 'photoURL', 'tpin']) ||
+                         // Specifically allow updating requiresPasswordChange from true to false
+                         (resource.data.requiresPasswordChange == true &&
+                          request.resource.data.requiresPasswordChange == false &&
+                          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['requiresPasswordChange']))
+                        )
+                      ) ||
+                      (hasAccessLevel(1) &&
+                        // Admin can update more fields, but uid and email should remain consistent with auth for the user.
+                        request.resource.data.uid == resource.data.uid && // UID cannot change
+                        request.resource.data.email == resource.data.email && // Email change is complex, usually admin auth action
+                        request.resource.data.name is string && request.resource.data.name.size() > 0 &&
+                        request.resource.data.role is string &&
+                        request.resource.data.accessLevel is number &&
+                        request.resource.data.status is string &&
+                        request.resource.data.requiresPasswordChange is bool &&
+                        (!request.resource.data.containsKey('photoURL') || request.resource.data.photoURL is string || request.resource.data.photoURL == null) &&
+                        (!request.resource.data.containsKey('shares') || request.resource.data.shares is number) &&
+                        (!request.resource.data.containsKey('penaltyBalance') || request.resource.data.penaltyBalance is number) &&
+                        (!request.resource.data.containsKey('tpin') || request.resource.data.tpin is string)
+                      );
+
+      // Delete:
+      // - Disallow client-side deletion of user profiles. Should be an admin/backend process.
+      allow delete: if false;
+    }
+
+    // Settings Collection
+    // Path: /settings/global_settings
+    match /settings/global_settings {
+      // Read:
+      // - Any authenticated user can read the global settings.
+      allow read: if isAuthenticated();
+
+      // Write (Create/Update):
+      // - Only users with access level 1 can write/update global settings.
+      // - Includes basic validation for expected fields in global_settings.
+      allow write: if hasAccessLevel(1) &&
+                      request.resource.data.appName is string &&
+                      (!request.resource.data.containsKey('logoUrl') || request.resource.data.logoUrl is string || request.resource.data.logoUrl == null) &&
+                      (!request.resource.data.containsKey('invoiceLogoUrl') || request.resource.data.invoiceLogoUrl is string || request.resource.data.invoiceLogoUrl == null) &&
+      				        (!request.resource.data.containsKey('useAppLogoForInvoice') || request.resource.data.useAppLogoForInvoice is bool) &&
+                      (!request.resource.data.containsKey('contributionMin') || request.resource.data.contributionMin is number) &&
+                      (!request.resource.data.containsKey('contributionMax') || request.resource.data.contributionMax is number) &&
+                      (!request.resource.data.containsKey('penaltyAmount') || request.resource.data.penaltyAmount is number) &&
+                      (!request.resource.data.containsKey('currencySymbol') || request.resource.data.currencySymbol is string) &&
+                      (!request.resource.data.containsKey('invoiceCompanyName') || request.resource.data.invoiceCompanyName is string) &&
+                      (!request.resource.data.containsKey('invoiceAddress') || request.resource.data.invoiceAddress is string) &&
+                      (!request.resource.data.containsKey('invoiceContact') || request.resource.data.invoiceContact is string) &&
+                      (!request.resource.data.containsKey('financialYearStart') || request.resource.data.financialYearStart is string);
+
+    }
+
+    // Contributions Collection
+    // Path: /contributions/{contributionId}
+    match /contributions/{contributionId} {
+      // Read:
+      // - A user can read their own contributions.
+      // - Users with access level 1 can read any contribution.
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || hasAccessLevel(1));
+
+      // List:
+      // - Users with access level 1 can list all contributions (e.g., for reports).
+      // - Individual users list their own contributions via client-side queries secured by the 'read' rule above.
+      allow list: if isAuthenticated() && hasAccessLevel(1);
+
+      // Create:
+      // - An authenticated user can create a contribution for themselves.
+      // - Validates essential fields and ensures datePaid is a server timestamp.
+      allow create: if isAuthenticated() &&
+                       request.resource.data.userId == request.auth.uid &&
+                       request.resource.data.memberName is string &&
+                       request.resource.data.amount is number && request.resource.data.amount > 0 &&
+                       request.resource.data.monthsCovered is list && request.resource.data.monthsCovered.size() > 0 &&
+                       // Ensure all elements in monthsCovered are strings (YYYY-MM)
+                       request.resource.data.monthsCovered.size() == request.resource.data.monthsCovered.filter(month => month is string && month.matches('^\\d{4}-\\d{2}$')).size() &&
+                       request.resource.data.datePaid == request.time && // Server timestamp
+                       (!request.resource.data.containsKey('penaltyPaidAmount') || request.resource.data.penaltyPaidAmount is number) &&
+                       (!request.resource.data.containsKey('isLate') || request.resource.data.isLate is bool) &&
+                       (!request.resource.data.containsKey('notes') || request.resource.data.notes is string);
+
+      // Update & Delete:
+      // - Disallow client-side updates/deletions of contributions. These should be admin/backend processes if needed.
+      allow update: if false;
+      allow delete: if false;
+    }
+  }
+}
+
+    
