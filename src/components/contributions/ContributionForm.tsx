@@ -66,16 +66,23 @@ export default function ContributionForm() {
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
-    // Default values will be set in useEffect to reflect dynamic settings
+    defaultValues: { // Ensure initial defined values
+      amount: 0, 
+      monthsCovered: [],
+      notes: "",
+    },
   });
   
   useEffect(() => {
-    form.reset({
-        amount: settings.contributionMin || 0,
-        monthsCovered: [],
-        notes: "",
-    });
-  }, [settings.contributionMin, form]);
+    // When settings.contributionMin is loaded or changes,
+    // update the 'amount' field in the form.
+    if (settings.contributionMin !== undefined) {
+      form.setValue("amount", settings.contributionMin || 0, {
+        shouldValidate: true,
+        // shouldDirty: true, // Optionally set dirty state if value changes
+      });
+    }
+  }, [settings.contributionMin, form.setValue]);
 
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
@@ -107,7 +114,12 @@ export default function ContributionForm() {
         title: "Contribution Submitted Successfully!",
         description: `Your contribution of ${settings.currencySymbol}${values.amount} for ${values.monthsCovered.join(', ')} has been recorded.`,
       });
-      form.reset({ amount: settings.contributionMin || 0, monthsCovered: [], notes: "" });
+      // Reset form to initial default values, which will now also consider current settings.contributionMin
+      form.reset({ 
+        amount: settings.contributionMin || 0, 
+        monthsCovered: [], 
+        notes: "" 
+      });
     } catch (error: any) {
       console.error("Error submitting contribution:", error);
       toast({
