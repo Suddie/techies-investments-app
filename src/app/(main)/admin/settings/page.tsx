@@ -23,7 +23,7 @@ import { useFirebase } from "@/contexts/FirebaseProvider";
 import { doc, updateDoc } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import React, { useEffect, useState } from "react";
-import AppLayout from "@/components/layout/AppLayout"; // To protect the route
+import ProtectedRoute from "@/components/common/ProtectedRoute"; // Import ProtectedRoute
 
 const generalSettingsSchema = z.object({
   appName: z.string().min(3, "App name must be at least 3 characters.").max(50, "App name must be at most 50 characters."),
@@ -82,7 +82,7 @@ export default function AdminSettingsPage() {
   // Other settings forms (financial, theme, etc.) would go here
 
   return (
-    <AppLayout adminOnly={true} requiredAccessLevel={1}> {/* Protect route */}
+    <ProtectedRoute adminOnly={true} requiredAccessLevel={1}> {/* Protect route content */}
       <PageHeader
         title="Admin Settings"
         description="Manage global application settings and configurations."
@@ -160,6 +160,6 @@ export default function AdminSettingsPage() {
         </TabsContent>
         {/* More TabsContent for Theme, Invoice, etc. */}
       </Tabs>
-    </AppLayout>
+    </ProtectedRoute>
   );
 }
