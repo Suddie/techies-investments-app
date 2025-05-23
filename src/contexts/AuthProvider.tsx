@@ -7,7 +7,8 @@ import { doc, getDoc } from 'firebase/firestore';
 import { useFirebase } from './FirebaseProvider';
 import type { UserProfile } from '@/lib/types';
 import { ROLES } from '@/lib/constants';
-import { Skeleton } from '@/components/ui/skeleton';
+// Skeleton component is not needed here anymore for AuthProvider's own loading state.
+// Child components will handle their own skeletons.
 
 interface AuthContextType {
   user: FirebaseUser | null;
@@ -54,15 +55,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             ...profileData,
           });
         } else {
-          // Handle case where user exists in Auth but not in Firestore (e.g., needs profile setup)
-          // For now, set a default minimal profile. Admin would create the full profile.
            setUserProfile({
             uid: firebaseUser.uid,
             email: firebaseUser.email,
             name: firebaseUser.displayName || "New User",
-            role: 'Member', // Default role
+            role: 'Member', 
             accessLevel: ROLES['Member'].accessLevel,
-            requiresPasswordChange: true, // Default for newly created users not in DB.
+            requiresPasswordChange: true, 
             photoURL: firebaseUser.photoURL,
           });
           console.warn(`User profile not found in Firestore for UID: ${firebaseUser.uid}. A default profile was created.`);
@@ -80,15 +79,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const isAdmin = userProfile?.role === 'Admin';
   const accessLevel = userProfile?.accessLevel ?? null;
 
-  if (loading && typeof window !== 'undefined' && (window.location.pathname !== '/login' && window.location.pathname !== '/forgot-password' && window.location.pathname !== '/change-password')) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <Skeleton className="h-12 w-12 rounded-full" />
-        <Skeleton className="h-4 w-[250px] ml-4" />
-      </div>
-    );
-  }
-
+  // The conditional rendering of a skeleton here was causing hydration issues.
+  // Child components (like HomePage or ProtectedRoute) are responsible for their own loading UI
+  // based on the 'loading' state from this provider.
+  // AuthProvider should consistently render its children to avoid mismatches between server and client initial render.
+  // if (loading && typeof window !== 'undefined' && (window.location.pathname !== '/login' && window.location.pathname !== '/forgot-password' && window.location.pathname !== '/change-password')) {
+  //   return (
+  //     <div className="flex h-screen items-center justify-center">
+  //       <Skeleton className="h-12 w-12 rounded-full" />
+  //       <Skeleton className="h-4 w-[250px] ml-4" />
+  //     </div>
+  //   );
+  // }
 
   return (
     <AuthContext.Provider value={{ user, userProfile, loading, isAdmin, accessLevel }}>
