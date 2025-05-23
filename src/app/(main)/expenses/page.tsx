@@ -12,9 +12,8 @@ import type { Expense } from "@/lib/types";
 import { useAuth } from "@/contexts/AuthProvider";
 import { useFirebase } from "@/contexts/FirebaseProvider";
 import { useToast } from "@/hooks/use-toast";
-import { collection, addDoc, serverTimestamp, doc, updateDoc } from "firebase/firestore";
-// Import ExpenseList when ready
-// import ExpenseList from "@/components/expenses/ExpenseList";
+import { collection, addDoc, serverTimestamp, doc, updateDoc, Timestamp } from "firebase/firestore";
+import ExpenseList from "@/components/expenses/ExpenseList"; // Import ExpenseList
 
 export default function ExpensesPage() {
   const { userProfile } = useAuth();
@@ -34,7 +33,7 @@ export default function ExpensesPage() {
     setIsExpenseFormOpen(true);
   };
 
-  const handleEditExpense = (expense: Expense) => { // Will be used by ExpenseList
+  const handleEditExpense = (expense: Expense) => {
     if (!canManageExpenses) {
         toast({ title: "Access Denied", description: "You do not have permission to edit expenses.", variant: "destructive"});
         return;
@@ -54,8 +53,11 @@ export default function ExpensesPage() {
       return;
     }
 
-    const expenseData: Omit<Expense, "id" | "createdAt"> & { createdAt?: any } = {
-      date: data.date,
+    // Convert JS Date to Firestore Timestamp for date field
+    const expenseDate = data.date instanceof Date ? Timestamp.fromDate(data.date) : data.date;
+
+    const expenseData: Omit<Expense, "id" | "createdAt" | "date"> & { createdAt?: any; date: any } = {
+      date: expenseDate,
       description: data.description,
       category: data.category,
       quantity: data.quantity,
@@ -72,7 +74,9 @@ export default function ExpensesPage() {
       if (expenseId) {
         // Update existing expense
         const expenseDocRef = doc(db, "expenses", expenseId);
-        await updateDoc(expenseDocRef, expenseData);
+        // Remove createdAt for updates as it should not change
+        const { createdAt, ...updateData } = expenseData;
+        await updateDoc(expenseDocRef, updateData);
         toast({ title: "Expense Updated", description: "The expense has been successfully updated." });
       } else {
         // Add new expense
@@ -82,8 +86,7 @@ export default function ExpensesPage() {
       }
       setIsExpenseFormOpen(false);
       setEditingExpense(null);
-      // Here you would typically re-fetch or update the expense list state
-      // For now, we'll rely on a manual refresh or a future ExpenseList component to update.
+      // ExpenseList uses onSnapshot, so it will update automatically
     } catch (error: any) {
       console.error("Error saving expense:", error);
       toast({
@@ -122,10 +125,7 @@ export default function ExpensesPage() {
         }
       />
       <div className="border shadow-sm rounded-lg p-2">
-        {/* <ExpenseList onEditExpense={handleEditExpense} /> Placeholder for expense list */}
-        <p className="text-center text-muted-foreground py-8">
-          Expense list will be implemented here. For now, you can add expenses using the button above if you have permission.
-        </p>
+        <ExpenseList onEditExpense={handleEditExpense} />
       </div>
     </ProtectedRoute>
   );
