@@ -10,121 +10,81 @@ service cloud.firestore {
     }
 
     function getUserRole(userId) {
-      return get(/databases/$(database)/documents/users/$(userId)).data.role;
+      return get(/databases/{database}/documents/users/{userId}).data.role;
     }
 
     // More robust function to get access level, defaulting to a restrictive level if not found
     function getUserAccessLevel(userId) {
-      let userData = get(/databases/$(database)/documents/users/$(userId)).data;
-      if (userData != null && userData.accessLevel != null) {
-        return userData.accessLevel;
-      }
-      // Default to a level that has no permissions if user doc or accessLevel is missing
-      return 4; // Or any number > 3
+      let userData = get(/databases/{database}/documents/users/{userId}).data;
+      return (userData != null && userData.accessLevel != null) ? userData.accessLevel : 4;
     }
 
-    // Check if the user is an Admin
     function isAdmin(userId) {
       return getUserRole(userId) == 'Admin';
     }
-    
-    // Check if the requesting user is the owner of the document
+
     function isOwner(userId) {
       return request.auth.uid == userId;
     }
 
-    // Users Collection
+    // Security Rules for 'users' collection
     match /users/{userId} {
-      allow read: if isAuthenticated(); // All authenticated users can read user profiles (e.g., for names, roles)
-      allow create: if isAuthenticated() && isAdmin(request.auth.uid); // Only Admins can create users via backend/trusted client
-      allow update: if isAuthenticated() && (isAdmin(request.auth.uid) || isOwner(userId)); // Admins or owners can update
-      allow delete: if isAuthenticated() && isAdmin(request.auth.uid); // Only Admins can delete
+      allow read: if isAuthenticated() && (isOwner(userId) || getUserAccessLevel(request.auth.uid) == 1); // Admins can also read user profiles
+      allow create: if isAuthenticated() && getUserAccessLevel(request.auth.uid) == 1; // Admin creates users
+      allow update: if isAuthenticated() && (isOwner(userId) || getUserAccessLevel(request.auth.uid) == 1);
+      allow delete: if false; // Generally, don't allow client-side user deletion
     }
 
-    // Settings Collection
+    // Security Rules for 'settings' collection (single document 'global_settings')
     match /settings/global_settings {
       allow read: if isAuthenticated(); // All authenticated users can read global settings
-      allow write: if isAuthenticated() && getUserAccessLevel(request.auth.uid) == 1; // Only Level 1 (Admin, Treasurer etc.) can write
+      allow write: if isAuthenticated() && getUserAccessLevel(request.auth.uid) == 1; // Only Level 1 can write
     }
 
-    // Contributions Collection
+    // Security Rules for 'contributions' collection
     match /contributions/{contributionId} {
-      allow create: if isAuthenticated() && 
+      allow create: if isAuthenticated() &&
                        request.resource.data.userId == request.auth.uid &&
                        getUserAccessLevel(request.auth.uid) <= 3 &&
-                       request.resource.data.amount > 0; // Basic validation: amount must be positive
-                       // Add more server-side validation if needed (e.g., against globalSettings.contributionMin/Max if feasible)
-      allow read: if isAuthenticated() && 
-                     (request.resource.data.userId == request.auth.uid || getUserAccessLevel(request.auth.uid) <= 1);
-      allow update: if false; // Generally, contributions shouldn't be updatable by clients directly
-      allow delete: if false; // Or restrict to Admins if absolutely necessary
+                       request.resource.data.amount > 0; // Basic amount check
+      allow read: if isAuthenticated() &&
+                     (request.resource.data.userId == request.auth.uid || getUserAccessLevel(request.auth.uid) == 1);
+      allow update: if false; // No client-side updates initially
+      allow delete: if false; // No client-side deletes initially
     }
 
-    // Expenses Collection
+    // Security Rules for 'expenses' collection
     match /expenses/{expenseId} {
-      allow create: if isAuthenticated() && getUserAccessLevel(request.auth.uid) == 1; // Level 1 can create
+      allow create: if isAuthenticated() &&
+                       request.resource.data.enteredByUid == request.auth.uid &&
+                       getUserAccessLevel(request.auth.uid) == 1; // Level 1 can create
       allow read: if isAuthenticated(); // All authenticated users can read expenses
-      allow update: if isAuthenticated() && getUserAccessLevel(request.auth.uid) == 1; // Level 1 can update
-      allow delete: if isAuthenticated() && getUserAccessLevel(request.auth.uid) == 1; // Level 1 can delete
+      allow update: if isAuthenticated() &&
+                       getUserAccessLevel(request.auth.uid) == 1; // Level 1 can update
+      allow delete: if false; // No client-side deletes initially
     }
     
-    // Milestones Collection
+    // Security Rules for 'milestones' collection
     match /milestones/{milestoneId} {
-      allow create: if isAuthenticated() && getUserAccessLevel(request.auth.uid) == 1;
-      allow read: if isAuthenticated(); // All authenticated users can view milestones
-      allow update: if isAuthenticated() && getUserAccessLevel(request.auth.uid) == 1;
-      allow delete: if isAuthenticated() && getUserAccessLevel(request.auth.uid) == 1;
+      allow read: if isAuthenticated(); // All authenticated users can read milestones
+      allow create, update, delete: if isAuthenticated() && getUserAccessLevel(request.auth.uid) == 1; // Level 1 can CRUD
     }
 
-    // StockItems Collection
+    // Security Rules for 'stockItems' collection
     match /stockItems/{itemId} {
-      allow create: if isAuthenticated() && getUserAccessLevel(request.auth.uid) == 1;
-      allow read: if isAuthenticated(); // All authenticated users can view stock items
-      allow update: if isAuthenticated() && getUserAccessLevel(request.auth.uid) == 1;
-      allow delete: if isAuthenticated() && getUserAccessLevel(request.auth.uid) == 1;
+      allow read: if isAuthenticated(); // All authenticated users can read stock items
+      allow create, update, delete: if isAuthenticated() && getUserAccessLevel(request.auth.uid) == 1; // Level 1 can CRUD
     }
 
-    // StockTransactions Collection (Add rules when implementing this feature)
-    // match /stockTransactions/{transactionId} {
-    //   // ...
-    // }
+    // Placeholder for future collections
+    // match /auditLog/{logId} { ... }
+    // match /stockTransactions/{transactionId} { ... }
+    // match /tenants/{tenantId} { ... }
+    // match /rentInvoices/{invoiceId} { ... }
+    // match /professionals/{professionalId} { ... }
+    // match /bankBalances/{balanceId} { ... }
+    // match /bankTransactions/{transactionId} { ... }
+    // match /companyInfo/details { ... } // Single doc for company info
 
-    // Tenants Collection (Add rules when implementing this feature)
-    // match /tenants/{tenantId} {
-    //   // ...
-    // }
-    
-    // RentInvoices Collection (Add rules when implementing this feature)
-    // match /rentInvoices/{invoiceId} {
-    //   // ...
-    // }
-
-    // Professionals Collection (Add rules when implementing this feature)
-    // match /professionals/{professionalId} {
-    //   // ...
-    // }
-
-    // BankBalances Collection (Add rules when implementing this feature)
-    // match /bankBalances/{balanceId} {
-    //   // ...
-    // }
-    
-    // BankTransactions Collection (Add rules when implementing this feature)
-    // match /bankTransactions/{transactionId} {
-    //   // ...
-    // }
-    
-    // CompanyInfo Collection (Add rules when implementing this feature)
-    // match /companyInfo/{docId} { // Usually a single document
-    //   // ...
-    // }
-
-    // AuditLog Collection
-    // Consider making these immutable from the client for security
-    // match /auditLog/{logId} {
-    //  allow read: if isAuthenticated();
-    //  allow write: if false; // Logs should be written by Cloud Functions
-    //  allow delete: if false;
-    // }
   }
 }
