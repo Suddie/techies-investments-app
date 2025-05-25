@@ -64,10 +64,10 @@ export default function BankBalanceForm({ balance, onSave, onCancel }: BankBalan
     resolver: zodResolver(bankBalanceFormSchema),
     defaultValues: {
       monthYear: balance?.monthYear || format(new Date(), "yyyy-MM"),
-      openingBalance: balance?.openingBalance || 0,
-      closingBalance: balance?.closingBalance || 0,
-      interestEarned: balance?.interestEarned ?? undefined,
-      bankCharges: balance?.bankCharges ?? undefined,
+      openingBalance: balance?.openingBalance ?? 0,
+      closingBalance: balance?.closingBalance ?? 0,
+      interestEarned: balance?.interestEarned ?? 0,
+      bankCharges: balance?.bankCharges ?? 0,
     },
   });
 
@@ -77,18 +77,18 @@ export default function BankBalanceForm({ balance, onSave, onCancel }: BankBalan
     if (balance) {
       reset({
         monthYear: balance.monthYear,
-        openingBalance: balance.openingBalance,
-        closingBalance: balance.closingBalance,
-        interestEarned: balance.interestEarned ?? undefined,
-        bankCharges: balance.bankCharges ?? undefined,
+        openingBalance: balance.openingBalance ?? 0,
+        closingBalance: balance.closingBalance ?? 0,
+        interestEarned: balance.interestEarned ?? 0,
+        bankCharges: balance.bankCharges ?? 0,
       });
     } else {
       reset({
         monthYear: format(new Date(), "yyyy-MM"),
         openingBalance: 0,
         closingBalance: 0,
-        interestEarned: undefined,
-        bankCharges: undefined,
+        interestEarned: 0,
+        bankCharges: 0,
       });
     }
   }, [balance, reset]);
@@ -140,7 +140,15 @@ export default function BankBalanceForm({ balance, onSave, onCancel }: BankBalan
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Opening Balance ({settings.currencySymbol})</FormLabel>
-                <FormControl><Input type="number" placeholder="e.g., 1000000" {...field} step="any" /></FormControl>
+                <FormControl>
+                  <Input 
+                    type="number" 
+                    placeholder="e.g., 1000000" 
+                    {...field} 
+                    onChange={e => field.onChange(parseFloat(e.target.value) || 0)}
+                    step="any" 
+                  />
+                </FormControl>
                 <FormMessage />
               </FormItem>
             )}
@@ -151,7 +159,15 @@ export default function BankBalanceForm({ balance, onSave, onCancel }: BankBalan
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Closing Balance ({settings.currencySymbol})</FormLabel>
-                <FormControl><Input type="number" placeholder="e.g., 1200000" {...field} step="any" /></FormControl>
+                <FormControl>
+                  <Input 
+                    type="number" 
+                    placeholder="e.g., 1200000" 
+                    {...field} 
+                    onChange={e => field.onChange(parseFloat(e.target.value) || 0)}
+                    step="any" 
+                  />
+                </FormControl>
                 <FormMessage />
               </FormItem>
             )}
@@ -162,7 +178,15 @@ export default function BankBalanceForm({ balance, onSave, onCancel }: BankBalan
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Interest Earned ({settings.currencySymbol}) (Optional)</FormLabel>
-                <FormControl><Input type="number" placeholder="e.g., 5000" {...field} step="any" /></FormControl>
+                <FormControl>
+                  <Input 
+                    type="number" 
+                    placeholder="e.g., 5000" 
+                    {...field} 
+                    onChange={e => field.onChange(parseFloat(e.target.value) || 0)}
+                    step="any" 
+                  />
+                </FormControl>
                 <FormMessage />
               </FormItem>
             )}
@@ -173,7 +197,15 @@ export default function BankBalanceForm({ balance, onSave, onCancel }: BankBalan
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Bank Charges ({settings.currencySymbol}) (Optional)</FormLabel>
-                <FormControl><Input type="number" placeholder="e.g., 200" {...field} step="any" /></FormControl>
+                <FormControl>
+                  <Input 
+                    type="number" 
+                    placeholder="e.g., 200" 
+                    {...field} 
+                    onChange={e => field.onChange(parseFloat(e.target.value) || 0)}
+                    step="any" 
+                  />
+                </FormControl>
                 <FormMessage />
               </FormItem>
             )}
