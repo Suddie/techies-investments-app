@@ -43,22 +43,24 @@ export default function StockItemForm({ stockItem, onSave, onCancel }: StockItem
       itemName: stockItem?.itemName || "",
       description: stockItem?.description || "",
       unitOfMeasure: stockItem?.unitOfMeasure || "",
-      initialQuantity: stockItem ? undefined : 0, // Not directly editable for existing items from this form
+      initialQuantity: stockItem ? undefined : 0, // Field is not rendered if stockItem exists
       lowStockThreshold: stockItem?.lowStockThreshold || 0,
     },
   });
 
+  const { reset } = form;
+
   useEffect(() => {
     if (stockItem) {
-      form.reset({
+      reset({
         itemName: stockItem.itemName,
         description: stockItem.description || "",
         unitOfMeasure: stockItem.unitOfMeasure,
-        // initialQuantity is not reset here for existing items
-        lowStockThreshold: stockItem.lowStockThreshold,
+        initialQuantity: undefined, // Not shown/editable for existing items in this form
+        lowStockThreshold: stockItem.lowStockThreshold || 0, // Ensure defined value
       });
     } else {
-      form.reset({
+      reset({
         itemName: "",
         description: "",
         unitOfMeasure: "",
@@ -66,7 +68,7 @@ export default function StockItemForm({ stockItem, onSave, onCancel }: StockItem
         lowStockThreshold: 0,
       });
     }
-  }, [stockItem, form]);
+  }, [stockItem, reset]);
 
   const handleSubmit = async (data: StockItemFormValues) => {
     setIsLoading(true);
