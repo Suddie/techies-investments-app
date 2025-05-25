@@ -25,7 +25,7 @@ const stockItemFormSchema = z.object({
   itemName: z.string().min(2, "Item name must be at least 2 characters.").max(100, "Name too long."),
   description: z.string().max(500, "Description too long.").optional(),
   unitOfMeasure: z.string().min(1, "Unit of measure is required.").max(20, "UoM too long (e.g. bags, pcs)."),
-  unitPrice: z.coerce.number().min(0, "Unit price cannot be negative.").optional(), // Added optional unitPrice
+  unitPrice: z.coerce.number().min(0, "Unit price cannot be negative.").optional(),
   initialQuantity: z.coerce.number().min(0, "Initial quantity cannot be negative.").optional(), // Only for new items
   lowStockThreshold: z.coerce.number().min(0, "Low stock threshold cannot be negative."),
 });
@@ -46,8 +46,8 @@ export default function StockItemForm({ stockItem, onSave, onCancel }: StockItem
       itemName: stockItem?.itemName || "",
       description: stockItem?.description || "",
       unitOfMeasure: stockItem?.unitOfMeasure || "",
-      unitPrice: stockItem?.unitPrice || undefined, // Initialize as undefined if not present
-      initialQuantity: stockItem ? undefined : 0, 
+      unitPrice: stockItem?.unitPrice ?? '', // Initialize with empty string if undefined
+      initialQuantity: stockItem ? undefined : 0,
       lowStockThreshold: stockItem?.lowStockThreshold || 0,
     },
   });
@@ -60,8 +60,8 @@ export default function StockItemForm({ stockItem, onSave, onCancel }: StockItem
         itemName: stockItem.itemName,
         description: stockItem.description || "",
         unitOfMeasure: stockItem.unitOfMeasure,
-        unitPrice: stockItem.unitPrice || undefined,
-        initialQuantity: undefined, 
+        unitPrice: stockItem.unitPrice ?? '', // Initialize with empty string if undefined
+        initialQuantity: undefined,
         lowStockThreshold: stockItem.lowStockThreshold || 0,
       });
     } else {
@@ -69,7 +69,7 @@ export default function StockItemForm({ stockItem, onSave, onCancel }: StockItem
         itemName: "",
         description: "",
         unitOfMeasure: "",
-        unitPrice: undefined,
+        unitPrice: '', // Initialize with empty string for new items
         initialQuantity: 0,
         lowStockThreshold: 0,
       });
@@ -78,7 +78,12 @@ export default function StockItemForm({ stockItem, onSave, onCancel }: StockItem
 
   const handleSubmit = async (data: StockItemFormValues) => {
     setIsLoading(true);
-    await onSave(data, stockItem?.id);
+    // Zod schema with coerce.number().optional() will convert empty string to undefined
+    const dataToSave = {
+      ...data,
+      unitPrice: data.unitPrice === '' || data.unitPrice === null || isNaN(Number(data.unitPrice)) ? undefined : Number(data.unitPrice),
+    };
+    await onSave(dataToSave, stockItem?.id);
     setIsLoading(false);
   };
 
@@ -133,7 +138,24 @@ export default function StockItemForm({ stockItem, onSave, onCancel }: StockItem
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Unit Price ({settings.currencySymbol}) (Optional)</FormLabel>
-                  <FormControl><Input type="number" placeholder="e.g., 150.00" {...field} step="any" /></FormControl>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      placeholder="e.g., 150.00"
+                      {...field}
+                      value={field.value === null || field.value === undefined ? '' : field.value} // Ensure value is string for input
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        if (value === '') {
+                          field.onChange(undefined); // Set to undefined if cleared, Zod handles coercion
+                        } else {
+                          const numValue = parseFloat(value);
+                          field.onChange(isNaN(numValue) ? undefined : numValue);
+                        }
+                      }}
+                      step="any"
+                    />
+                  </FormControl>
                   <FormDescription>Reference cost per unit for this item.</FormDescription>
                   <FormMessage />
                 </FormItem>
