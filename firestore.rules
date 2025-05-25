@@ -4,112 +4,106 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper functions
+    // Helper Functions
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    function isOwner(userId) {
-      return request.auth.uid == userId;
-    }
-    
     function getUserAccessLevel(userId) {
       let userDoc = get(/databases/$(database)/documents/users/$(userId));
-      // If user document or accessLevel doesn't exist, default to a non-permissive level (e.g., 4)
+      // If user document doesn't exist or accessLevel is not set, default to most restrictive (e.g., 4 or higher)
       return userDoc.data.accessLevel != null ? userDoc.data.accessLevel : 4;
     }
-
+    
     // Users Collection
-    // - Admins (Level 1) can manage all user documents.
-    // - Users can read their own profile.
-    // - Users can update specific fields of their own profile (e.g., name, photoURL, tpin, but not role/accessLevel).
+    // - Admins (Level 1) can create, read, update, delete any user profile.
+    // - Authenticated users can read their own profile.
+    // - Authenticated users can update limited fields of their own profile (e.g., name, photoURL - more specific rules needed if implemented).
     match /users/{userId} {
-      allow read: if isAuthenticated() && (isOwner(userId) || getUserAccessLevel(request.auth.uid) <= 1);
-      allow create: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1; // Admin creating users
-      allow update: if isAuthenticated() && (
-                      (isOwner(userId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'photoURL', 'tpin', 'requiresPasswordChange'])) || 
-                      (getUserAccessLevel(request.auth.uid) <= 1) // Admins can update more fields
-                    );
-      allow delete: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1; // Only Admins can delete
-    }
-    // Explicitly allow list for Admins only. List is different from individual document reads.
-    match /users/{document=**} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || getUserAccessLevel(request.auth.uid) <= 1);
       allow list: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1;
+      allow create: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1; // Admin creates users
+      allow update: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1; // Admin updates users
+      // allow update: if isAuthenticated() && request.auth.uid == userId; // User updates their own profile (specific fields)
+      allow delete: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1; // Admin deletes users
     }
 
-
-    // Settings Collection (Global Settings)
-    // - Admins (Level 1) can update settings.
-    // - All authenticated users can read settings.
-    match /settings/global_settings {
+    // Settings Collection (e.g., /settings/global_settings)
+    // - Admins (Level 1) can read and write.
+    // - All authenticated users can read.
+    match /settings/{settingId} {
       allow read: if isAuthenticated();
       allow write: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1;
     }
 
     // Contributions Collection
-    // - Users can create their own contributions (Level 3 access implies this ability as per requirements)
+    // - Users with accessLevel <= 3 can create their own contributions.
     // - Users can read their own contributions.
-    // - Admins/Treasurers (Level 1) can read all contributions.
-    // - Updates/Deletes are restricted (likely admin/backend only).
+    // - Level 1 users (Admin, Treasurer) can read all contributions.
+    // - Updates/deletes generally disallowed from client, handled by admin/backend.
     match /contributions/{contributionId} {
-      allow create: if isAuthenticated() && 
-                       request.resource.data.userId == request.auth.uid &&
-                       getUserAccessLevel(request.auth.uid) <= 3 &&
-                       request.resource.data.amount > 0; // Basic validation
+      allow create: if isAuthenticated() 
+                    && request.resource.data.userId == request.auth.uid
+                    && getUserAccessLevel(request.auth.uid) <= 3;
       allow read: if isAuthenticated() && 
-                     (request.resource.data.userId == request.auth.uid || getUserAccessLevel(request.auth.uid) <= 1);
-      allow update: if false; // Or specific admin roles
-      allow delete: if false; // Or specific admin roles
-    }
-     match /contributions/{document=**} {
-      allow list: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1; // Admins can list all
+                    (request.auth.uid == resource.data.userId || getUserAccessLevel(request.auth.uid) <= 1);
+      allow update: if false; // Or specific admin role for corrections
+      allow delete: if false; // Or specific admin role
     }
 
     // Expenses Collection
     // - Level 1 users can create, update, delete expenses.
-    // - Authenticated users with access level up to 3 can read expenses.
+    // - Users with accessLevel <= 3 can read expenses.
     match /expenses/{expenseId} {
+      allow create: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1;
       allow read: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 3;
-      allow create, update, delete: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1;
+      allow update: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1;
+      allow delete: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1; // Or restrict further
     }
-    match /expenses/{document=**} {
-       allow list: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 3;
-    }
-    
+
     // Milestones Collection
     // - Level 1 users can CRUD.
-    // - All authenticated users (Level 3) can read.
+    // - All authenticated users can read.
     match /milestones/{milestoneId} {
+      allow create: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1;
       allow read: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 3;
-      allow create, update, delete: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1;
-    }
-    match /milestones/{document=**} {
-       allow list: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 3;
+      allow update: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1;
+      allow delete: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1;
     }
 
     // Stock Items Collection
     // - Level 1 users can CRUD.
-    // - All authenticated users (Level 3) can read.
+    // - All authenticated users (accessLevel <=3) can read.
     match /stockItems/{itemId} {
+      allow create: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1;
       allow read: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 3;
-      allow create, update, delete: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1;
-    }
-     match /stockItems/{document=**} {
-       allow list: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 3;
+      allow update: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1;
+      allow delete: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1;
     }
 
     // Stock Transactions Collection
     // - Level 1 users can create transactions.
-    // - Level 3 users (all authenticated who can see stock page) can read transactions for history.
+    // - All authenticated users (accessLevel <=3) can read transactions.
+    // - Updates/deletes typically disallowed to maintain audit trail.
     match /stockTransactions/{transactionId} {
-      allow read: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 3;
       allow create: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1;
-      allow update, delete: if false; // Transactions should generally be immutable from client
-    }
-     match /stockTransactions/{document=**} {
-       allow list: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 3;
+      allow read: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 3;
+      allow update: if false; 
+      allow delete: if false;
     }
 
-    // Add other collection rules here (e.g., penalties, auditLog, tenants, professionals, bankBalances, etc.)
+    // Audit Log Collection
+    // - Read: All authenticated users.
+    // - Create, Update, Delete: Disallowed from client (logs created by Cloud Functions).
+    match /auditLog/{logId} {
+      allow read: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 3;
+      allow list: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 3;
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // Add rules for other collections like penalties, tenants, professionals, bankBalances, etc. as they are implemented.
   }
 }
+```

@@ -1,5 +1,4 @@
 
-
 export interface UserProfile {
   uid: string;
   email: string | null;
@@ -112,7 +111,7 @@ export interface StockItem {
   itemName: string;
   description?: string;
   unitOfMeasure: string; 
-  unitPrice?: number; // Added optional unitPrice
+  unitPrice?: number; 
   currentQuantity: number;
   lowStockThreshold: number;
   createdAt?: any; 
@@ -123,7 +122,7 @@ export interface StockItemFormValues {
   itemName: string;
   description?: string;
   unitOfMeasure: string;
-  unitPrice?: number; // Added optional unitPrice
+  unitPrice?: number; 
   initialQuantity?: number; 
   lowStockThreshold: number;
 }
@@ -153,3 +152,13 @@ export interface StockTransactionFormValues {
   notes?: string;
 }
 
+export interface AuditLogEntry {
+  id?: string;
+  timestamp: any; // Firestore Timestamp
+  userId: string;
+  userName: string;
+  actionType: string; // e.g., "USER_LOGIN", "EXPENSE_CREATED", "SETTINGS_UPDATED"
+  details: string | Record<string, any>; // Can be a simple string or a structured object
+}
+
+```
