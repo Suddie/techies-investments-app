@@ -11,8 +11,8 @@ import { collection, query, orderBy, onSnapshot, doc, deleteDoc } from 'firebase
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from "@/components/ui/button";
-import { MoreHorizontal, Edit2, Trash2, AlertTriangle } from "lucide-react";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { MoreHorizontal, Edit2, Trash2, AlertTriangle, ArrowUpCircle, ArrowDownCircle } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,9 +27,11 @@ import {
 
 interface StockItemListProps {
   onEditStockItem: (item: StockItem) => void;
+  onRecordStockIn: (item: StockItem) => void;
+  onRecordStockOut: (item: StockItem) => void;
 }
 
-export default function StockItemList({ onEditStockItem }: StockItemListProps) {
+export default function StockItemList({ onEditStockItem, onRecordStockIn, onRecordStockOut }: StockItemListProps) {
   const { userProfile } = useAuth();
   const { db } = useFirebase();
   const { toast } = useToast();
@@ -72,8 +74,6 @@ export default function StockItemList({ onEditStockItem }: StockItemListProps) {
       return;
     }
     try {
-      // Note: Deleting a stock item should ideally check if it's used in transactions.
-      // For now, it's a direct delete.
       await deleteDoc(doc(db, "stockItems", itemToDelete.id));
       toast({ title: "Stock Item Deleted", description: `"${itemToDelete.itemName}" has been removed.` });
     } catch (error: any) {
@@ -144,9 +144,9 @@ export default function StockItemList({ onEditStockItem }: StockItemListProps) {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                        <DropdownMenuLabel>Manage Item</DropdownMenuLabel>
                         <DropdownMenuItem onClick={() => onEditStockItem(item)}>
-                          <Edit2 className="mr-2 h-4 w-4" /> Edit Item
+                          <Edit2 className="mr-2 h-4 w-4" /> Edit Item Details
                         </DropdownMenuItem>
                         <AlertDialogTrigger asChild>
                           <DropdownMenuItem
@@ -156,6 +156,14 @@ export default function StockItemList({ onEditStockItem }: StockItemListProps) {
                             <Trash2 className="mr-2 h-4 w-4" /> Delete Item
                           </DropdownMenuItem>
                         </AlertDialogTrigger>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuLabel>Transactions</DropdownMenuLabel>
+                         <DropdownMenuItem onClick={() => onRecordStockIn(item)}>
+                          <ArrowUpCircle className="mr-2 h-4 w-4 text-green-600" /> Record Stock IN
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => onRecordStockOut(item)}>
+                          <ArrowDownCircle className="mr-2 h-4 w-4 text-red-600" /> Record Stock OUT
+                        </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                     <AlertDialogContent>

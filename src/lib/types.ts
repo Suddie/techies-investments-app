@@ -6,42 +6,39 @@ export interface UserProfile {
   role: UserRole;
   accessLevel: AccessLevel;
   shares?: number;
-  penaltyBalance?: number; // Added for dashboard mock
-  tpin?: string; // Encrypted
+  penaltyBalance?: number; 
+  tpin?: string; 
   requiresPasswordChange?: boolean;
   status?: 'Active' | 'Inactive';
   photoURL?: string | null;
-  createdAt?: any; // Firestore serverTimestamp or Date
-  // lastLoginAt?: any; // Consider adding this
+  createdAt?: any; 
 }
 
 export type UserRole = 'Admin' | 'Treasurer' | 'Vice Treasurer' | 'Chairman' | 'Vice Chairman' | 'Investment Lead' | 'Secretary' | 'Member' | 'Finance Professional';
 
 export type AccessLevel = 1 | 2 | 3;
 
-// This type is for the Zod schema and form values in UserForm.tsx
-// It might differ slightly from UserProfile (e.g., password field exists in form but not directly in UserProfile)
 export interface UserFormValues {
   name: string;
-  email: string; // Required for new user creation
+  email: string; 
   role: UserRole;
-  password?: string; // Optional for edit, required for new if creating auth user
+  password?: string; 
   status: 'Active' | 'Inactive';
   requiresPasswordChange: boolean;
 }
 
 
 export interface Contribution {
-  id?: string; // Firestore document ID
+  id?: string; 
   userId: string;
-  memberName: string | null; // From UserProfile.name
+  memberName: string | null; 
   amount: number;
   penaltyPaidAmount?: number;
-  monthsCovered: string[]; // Array of 'YYYY-MM'
-  datePaid: any; // Firestore serverTimestamp or Date
+  monthsCovered: string[]; 
+  datePaid: any; 
   isLate?: boolean;
   notes?: string;
-  createdAt?: any; // Firestore serverTimestamp or Date
+  createdAt?: any; 
 }
 
 export interface GlobalSettings {
@@ -56,12 +53,12 @@ export interface GlobalSettings {
   invoiceCompanyName?: string;
   invoiceAddress?: string;
   invoiceContact?: string;
-  financialYearStart?: string; // 'MM-DD'
+  financialYearStart?: string; 
 }
 
 export interface NotificationMessage {
   id: string;
-  userId: string | 'all'; // Target user or 'all'
+  userId: string | 'all'; 
   message: string;
   type: 'reminder' | 'warning' | 'alert' | 'info' | 'success' | 'error';
   timestamp: Date;
@@ -70,37 +67,36 @@ export interface NotificationMessage {
 }
 
 export interface Expense {
-  id?: string; // Firestore document ID
-  date: any; // Will be Firestore Timestamp, use `any` for form flexibility, convert before saving
+  id?: string; 
+  date: any; 
   description: string;
-  category: string; // e.g., 'Office Supplies', 'Utilities', 'Project Material'
+  category: string; 
   quantity: number;
   unitPrice: number;
-  subtotal: number; // quantity * unitPrice
-  totalAmount: number; // Could be same as subtotal or include taxes/discounts
+  subtotal: number; 
+  totalAmount: number; 
   vendor?: string;
-  receiptUrl?: string; // URL to receipt image in Firebase Storage
+  receiptUrl?: string; 
   enteredByUid: string;
   enteredByName: string;
-  createdAt: any; // Firestore Timestamp or Date
+  createdAt: any; 
 }
 
 export type MilestoneStatus = 'Not Started' | 'In Progress' | 'Completed' | 'On Hold' | 'Cancelled';
 
 export interface Milestone {
-  id?: string; // Firestore document ID
+  id?: string; 
   name: string;
   description?: string;
-  targetAmount: number; // in base currency (e.g., MK)
-  targetDate?: any; // Firestore Timestamp or Date (Optional)
+  targetAmount: number; 
+  targetDate?: any; 
   status: MilestoneStatus;
-  actualCompletionDate?: any; // Firestore Timestamp or Date (Optional)
-  projectId?: string; // If you have multiple projects
+  actualCompletionDate?: any; 
+  projectId?: string; 
   createdAt?: any;
   updatedAt?: any;
 }
 
-// Form values for MilestoneForm
 export interface MilestoneFormValues {
   name: string;
   description?: string;
@@ -111,24 +107,45 @@ export interface MilestoneFormValues {
 }
 
 export interface StockItem {
-  id?: string; // Firestore document ID
+  id?: string; 
   itemName: string;
   description?: string;
-  unitOfMeasure: string; // e.g., 'bags', 'kg', 'liters', 'pieces'
+  unitOfMeasure: string; 
   currentQuantity: number;
   lowStockThreshold: number;
-  createdAt?: any; // Firestore Timestamp
-  updatedAt?: any; // Firestore Timestamp
+  createdAt?: any; 
+  updatedAt?: any; 
 }
 
-// Form values for StockItemForm
 export interface StockItemFormValues {
   itemName: string;
   description?: string;
   unitOfMeasure: string;
-  initialQuantity?: number; // Used when creating a new item, defaults to 0
+  initialQuantity?: number; 
   lowStockThreshold: number;
 }
 
+export interface StockTransaction {
+  id?: string; // Firestore document ID
+  itemId: string;
+  itemName: string; // Denormalized for display
+  transactionType: 'IN' | 'OUT';
+  date: any; // Firestore Timestamp
+  quantity: number;
+  unitCost?: number; // Required for 'IN', optional for 'OUT'
+  supplier?: string; // For 'IN'
+  issuedTo?: string; // For 'OUT'
+  notes?: string;
+  recordedByUid: string;
+  recordedByName: string;
+  createdAt: any; // Firestore Timestamp
+}
 
-// Add other types as needed for tenants etc.
+export interface StockTransactionFormValues {
+  date: Date;
+  quantity: number;
+  unitCost?: number; 
+  supplier?: string;
+  issuedTo?: string;
+  notes?: string;
+}
