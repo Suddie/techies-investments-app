@@ -23,7 +23,8 @@ export default function StockTransactionList() {
   useEffect(() => {
     setLoading(true);
     const transactionsRef = collection(db, "stockTransactions");
-    const q = query(transactionsRef, orderBy("date", "desc"), orderBy("createdAt", "desc"));
+    // Simplified query to order by only one field to avoid needing a composite index immediately
+    const q = query(transactionsRef, orderBy("date", "desc"));
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const fetchedTransactions: StockTransaction[] = [];
@@ -44,9 +45,9 @@ export default function StockTransactionList() {
       console.error("Error fetching stock transactions:", err);
       toast({
         title: "Error Fetching Transactions",
-        description: `Could not load stock transaction history: ${err.message}. Check Firestore permissions.`,
+        description: `Could not load stock transaction history: ${err.message}. Check Firestore permissions or if a required index is missing.`,
         variant: "destructive",
-        duration: 7000,
+        duration: 10000, // Increased duration for index message
       });
       setLoading(false);
     });
@@ -110,7 +111,7 @@ export default function StockTransactionList() {
                 {transaction.transactionType === 'IN' ? transaction.supplier : transaction.issuedTo}
                 {!transaction.supplier && !transaction.issuedTo && <span className="text-muted-foreground/70">-</span>}
             </TableCell>
-            <TableCell className="max-w-xs truncate" title={transaction.notes}>
+            <TableCell className="max-w-xs truncate" title={transaction.notes ?? undefined}>
                 {transaction.notes || <span className="text-muted-foreground/70">-</span>}
             </TableCell>
             <TableCell>{transaction.recordedByName}</TableCell>
