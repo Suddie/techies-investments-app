@@ -24,22 +24,23 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger, // Ensure AlertDialogTrigger is imported
 } from "@/components/ui/alert-dialog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 
 
 interface BankBalanceListProps {
-  // onEditBalance: (balance: BankBalance) => void; // To be uncommented later
+  onEditBalance: (balance: BankBalance) => void;
 }
 
-export default function BankBalanceList({ /* onEditBalance */ }: BankBalanceListProps) {
+export default function BankBalanceList({ onEditBalance }: BankBalanceListProps) {
   const { userProfile } = useAuth();
   const { settings } = useSettings();
   const { db } = useFirebase();
   const { toast } = useToast();
   const [balances, setBalances] = useState<BankBalance[]>([]);
   const [loading, setLoading] = useState(true);
-  // const [balanceToDelete, setBalanceToDelete] = useState<BankBalance | null>(null); // For delete later
+  const [balanceToDelete, setBalanceToDelete] = useState<BankBalance | null>(null);
 
   const canManageBankBalances = userProfile && userProfile.accessLevel <= 1;
 
@@ -76,21 +77,21 @@ export default function BankBalanceList({ /* onEditBalance */ }: BankBalanceList
     return () => unsubscribe();
   }, [db, toast]);
 
-  // const handleDeleteBalance = async () => {
-  //   if (!balanceToDelete || !balanceToDelete.id || !canManageBankBalances) {
-  //     toast({ title: "Error", description: "Cannot delete balance or insufficient permissions.", variant: "destructive" });
-  //     setBalanceToDelete(null);
-  //     return;
-  //   }
-  //   try {
-  //     await deleteDoc(doc(db, "bankBalances", balanceToDelete.id));
-  //     toast({ title: "Bank Balance Deleted", description: `Balance for ${balanceToDelete.monthYear} has been removed.` });
-  //   } catch (error: any) {
-  //     toast({ title: "Delete Failed", description: error.message, variant: "destructive" });
-  //   } finally {
-  //     setBalanceToDelete(null);
-  //   }
-  // };
+  const handleDeleteBalance = async () => {
+    if (!balanceToDelete || !balanceToDelete.id || !canManageBankBalances) {
+      toast({ title: "Error", description: "Cannot delete balance or insufficient permissions.", variant: "destructive" });
+      setBalanceToDelete(null);
+      return;
+    }
+    try {
+      await deleteDoc(doc(db, "bankBalances", balanceToDelete.id));
+      toast({ title: "Bank Balance Deleted", description: `Balance for ${balanceToDelete.monthYear} has been removed.` });
+    } catch (error: any) {
+      toast({ title: "Delete Failed", description: error.message, variant: "destructive" });
+    } finally {
+      setBalanceToDelete(null);
+    }
+  };
 
 
   if (loading) {
@@ -137,7 +138,7 @@ export default function BankBalanceList({ /* onEditBalance */ }: BankBalanceList
               <TableHead className="text-right">Bank Charges ({settings.currencySymbol})</TableHead>
               <TableHead className="hidden sm:table-cell">Recorded By</TableHead>
               <TableHead className="hidden sm:table-cell">Last Updated</TableHead>
-              {/* {canManageBankBalances && <TableHead>Actions</TableHead>} */}
+              {canManageBankBalances && <TableHead>Actions</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -162,7 +163,7 @@ export default function BankBalanceList({ /* onEditBalance */ }: BankBalanceList
                 <TableCell className="hidden sm:table-cell">
                   {balance.lastUpdated ? format(balance.lastUpdated, "PPpp") : <span className="text-muted-foreground/70">N/A</span>}
                 </TableCell>
-                {/* {canManageBankBalances && (
+                {canManageBankBalances && (
                   <TableCell>
                     <AlertDialog>
                       <DropdownMenu>
@@ -192,7 +193,7 @@ export default function BankBalanceList({ /* onEditBalance */ }: BankBalanceList
                           <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                           <AlertDialogDescription>
                             This action cannot be undone. This will permanently delete the bank balance entry
-                            for "{balanceToDelete?.monthYear}".
+                            for "{balanceToDelete?.monthYear ? format(parse(balanceToDelete.monthYear, 'yyyy-MM', new Date()), "MMMM yyyy") : 'this entry'}".
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
@@ -202,7 +203,7 @@ export default function BankBalanceList({ /* onEditBalance */ }: BankBalanceList
                       </AlertDialogContent>
                     </AlertDialog>
                   </TableCell>
-                )} */}
+                )}
               </TableRow>
             ))}
           </TableBody>

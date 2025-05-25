@@ -174,7 +174,7 @@ export interface BankBalance {
 }
 
 export interface BankBalanceFormValues {
-  monthYear: string;
+  monthYear: string; // Format 'YYYY-MM'
   openingBalance: number;
   closingBalance: number;
   interestEarned?: number;
