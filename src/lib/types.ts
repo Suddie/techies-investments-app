@@ -1,4 +1,5 @@
 
+
 export interface UserProfile {
   uid: string;
   email: string | null;
@@ -111,6 +112,7 @@ export interface StockItem {
   itemName: string;
   description?: string;
   unitOfMeasure: string; 
+  unitPrice?: number; // Added optional unitPrice
   currentQuantity: number;
   lowStockThreshold: number;
   createdAt?: any; 
@@ -121,6 +123,7 @@ export interface StockItemFormValues {
   itemName: string;
   description?: string;
   unitOfMeasure: string;
+  unitPrice?: number; // Added optional unitPrice
   initialQuantity?: number; 
   lowStockThreshold: number;
 }

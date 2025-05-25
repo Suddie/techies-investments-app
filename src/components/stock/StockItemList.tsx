@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import type { StockItem } from '@/lib/types';
 import { useAuth } from '@/contexts/AuthProvider';
 import { useFirebase } from '@/contexts/FirebaseProvider';
+import { useSettings } from '@/contexts/SettingsProvider'; // Import useSettings
 import { collection, query, orderBy, onSnapshot, doc, deleteDoc } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
@@ -34,6 +35,7 @@ interface StockItemListProps {
 export default function StockItemList({ onEditStockItem, onRecordStockIn, onRecordStockOut }: StockItemListProps) {
   const { userProfile } = useAuth();
   const { db } = useFirebase();
+  const { settings } = useSettings(); // Get settings for currency symbol
   const { toast } = useToast();
   const [stockItems, setStockItems] = useState<StockItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -107,6 +109,7 @@ export default function StockItemList({ onEditStockItem, onRecordStockIn, onReco
             <TableHead>Item Name</TableHead>
             <TableHead className="hidden md:table-cell">Description</TableHead>
             <TableHead>Unit</TableHead>
+            <TableHead className="text-right">Unit Price ({settings.currencySymbol})</TableHead>
             <TableHead className="text-right">Current Qty</TableHead>
             <TableHead className="text-right">Low Stock At</TableHead>
             {canManageStock && <TableHead>Actions</TableHead>}
@@ -126,6 +129,9 @@ export default function StockItemList({ onEditStockItem, onRecordStockIn, onReco
               </TableCell>
               <TableCell>
                 <Badge variant={"outline"}>{item.unitOfMeasure}</Badge>
+              </TableCell>
+              <TableCell className="text-right">
+                {item.unitPrice !== undefined ? item.unitPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : <span className="text-muted-foreground/70">-</span>}
               </TableCell>
               <TableCell className="text-right font-semibold">
                 {item.currentQuantity.toLocaleString()}

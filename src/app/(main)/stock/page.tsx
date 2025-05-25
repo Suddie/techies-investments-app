@@ -67,6 +67,7 @@ export default function StockManagementPage() {
       itemName: data.itemName,
       description: data.description || "",
       unitOfMeasure: data.unitOfMeasure,
+      unitPrice: data.unitPrice, // Save unitPrice
       currentQuantity: itemId ? (editingStockItem?.currentQuantity || 0) : (data.initialQuantity || 0),
       lowStockThreshold: data.lowStockThreshold,
     };
@@ -75,8 +76,9 @@ export default function StockManagementPage() {
       if (itemId) {
         const itemDocRef = doc(db, "stockItems", itemId);
         stockItemData.updatedAt = serverTimestamp();
-        const {currentQuantity, ...updateData} = stockItemData; 
-        await updateDoc(itemDocRef, {...updateData});
+        // Ensure currentQuantity is not part of updateData if we're not changing it directly here
+        const {currentQuantity, createdAt, ...updateData} = stockItemData; 
+        await updateDoc(itemDocRef, {...updateData, updatedAt: serverTimestamp()}); // Explicitly set updatedAt
         toast({ title: "Stock Item Updated", description: `"${data.itemName}" has been successfully updated.` });
       } else {
         stockItemData.createdAt = serverTimestamp();
@@ -148,9 +150,6 @@ export default function StockManagementPage() {
     try {
       await runTransaction(db, async (transaction) => {
         const stockItemRef = doc(db, "stockItems", itemId);
-        // Note: When setting a new document in a transaction, it's often `transaction.set(doc(collectionRef, newId), data)`
-        // or `transaction.set(doc(collectionRef), data)` if you want Firestore to auto-generate the ID.
-        // For simplicity, and if `stockTransactions` IDs aren't critical for immediate client-side use after creation:
         transaction.set(doc(collection(db, "stockTransactions")), transactionData);
         transaction.update(stockItemRef, { currentQuantity: newQuantity, updatedAt: serverTimestamp() });
       });
@@ -239,4 +238,3 @@ export default function StockManagementPage() {
     </ProtectedRoute>
   );
 }
-

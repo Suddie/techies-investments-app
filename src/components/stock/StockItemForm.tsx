@@ -19,11 +19,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { DialogFooter, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import React, { useEffect, useState } from "react";
 import type { StockItem, StockItemFormValues } from "@/lib/types";
+import { useSettings } from "@/contexts/SettingsProvider"; // Import useSettings
 
 const stockItemFormSchema = z.object({
   itemName: z.string().min(2, "Item name must be at least 2 characters.").max(100, "Name too long."),
   description: z.string().max(500, "Description too long.").optional(),
   unitOfMeasure: z.string().min(1, "Unit of measure is required.").max(20, "UoM too long (e.g. bags, pcs)."),
+  unitPrice: z.coerce.number().min(0, "Unit price cannot be negative.").optional(), // Added optional unitPrice
   initialQuantity: z.coerce.number().min(0, "Initial quantity cannot be negative.").optional(), // Only for new items
   lowStockThreshold: z.coerce.number().min(0, "Low stock threshold cannot be negative."),
 });
@@ -36,6 +38,7 @@ interface StockItemFormProps {
 
 export default function StockItemForm({ stockItem, onSave, onCancel }: StockItemFormProps) {
   const [isLoading, setIsLoading] = useState(false);
+  const { settings } = useSettings(); // Get settings for currency symbol
 
   const form = useForm<StockItemFormValues>({
     resolver: zodResolver(stockItemFormSchema),
@@ -43,7 +46,8 @@ export default function StockItemForm({ stockItem, onSave, onCancel }: StockItem
       itemName: stockItem?.itemName || "",
       description: stockItem?.description || "",
       unitOfMeasure: stockItem?.unitOfMeasure || "",
-      initialQuantity: stockItem ? undefined : 0, // Field is not rendered if stockItem exists
+      unitPrice: stockItem?.unitPrice || undefined, // Initialize as undefined if not present
+      initialQuantity: stockItem ? undefined : 0, 
       lowStockThreshold: stockItem?.lowStockThreshold || 0,
     },
   });
@@ -56,14 +60,16 @@ export default function StockItemForm({ stockItem, onSave, onCancel }: StockItem
         itemName: stockItem.itemName,
         description: stockItem.description || "",
         unitOfMeasure: stockItem.unitOfMeasure,
-        initialQuantity: undefined, // Not shown/editable for existing items in this form
-        lowStockThreshold: stockItem.lowStockThreshold || 0, // Ensure defined value
+        unitPrice: stockItem.unitPrice || undefined,
+        initialQuantity: undefined, 
+        lowStockThreshold: stockItem.lowStockThreshold || 0,
       });
     } else {
       reset({
         itemName: "",
         description: "",
         unitOfMeasure: "",
+        unitPrice: undefined,
         initialQuantity: 0,
         lowStockThreshold: 0,
       });
@@ -120,7 +126,21 @@ export default function StockItemForm({ stockItem, onSave, onCancel }: StockItem
               </FormItem>
             )}
           />
-          {!stockItem && ( // Only show for new items
+          
+          <FormField
+              control={form.control}
+              name="unitPrice"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Unit Price ({settings.currencySymbol}) (Optional)</FormLabel>
+                  <FormControl><Input type="number" placeholder="e.g., 150.00" {...field} step="any" /></FormControl>
+                  <FormDescription>Reference cost per unit for this item.</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+          {!stockItem && ( 
             <FormField
               control={form.control}
               name="initialQuantity"
