@@ -161,4 +161,22 @@ export interface AuditLogEntry {
   details: string | Record<string, any>; // Can be a simple string or a structured object
 }
 
-```
+export interface BankBalance {
+  id?: string;
+  monthYear: string; // Format 'YYYY-MM'
+  openingBalance: number;
+  closingBalance: number;
+  interestEarned?: number;
+  bankCharges?: number;
+  lastUpdated?: any; // Firestore Timestamp
+  recordedByUid?: string;
+  recordedByName?: string;
+}
+
+export interface BankBalanceFormValues {
+  monthYear: string;
+  openingBalance: number;
+  closingBalance: number;
+  interestEarned?: number;
+  bankCharges?: number;
+}

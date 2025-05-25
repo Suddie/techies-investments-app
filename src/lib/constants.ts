@@ -44,6 +44,7 @@ export const NAVIGATION_LINKS = [
   { href: "/stock", label: "Stock Management", icon: "Archive", adminOnly: false, requiredAccessLevel: 3 },
   { href: "/reports", label: "Reports", icon: "FileText", adminOnly: false, requiredAccessLevel: 2 },
   { href: "/admin/users", label: "User Management", icon: "Users", adminOnly: true, requiredAccessLevel: 1 },
-  { href: "/audit-log", label: "Audit Log", icon: "History", adminOnly: false, requiredAccessLevel: 3 }, // All authenticated users can view
+  { href: "/audit-log", label: "Audit Log", icon: "History", adminOnly: false, requiredAccessLevel: 3 },
+  { href: "/bank-management", label: "Bank Management", icon: "Landmark", adminOnly: false, requiredAccessLevel: 2 },
   // Add more links for other features like project management etc.
 ];
