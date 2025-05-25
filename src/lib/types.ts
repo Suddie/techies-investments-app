@@ -110,5 +110,25 @@ export interface MilestoneFormValues {
   actualCompletionDate?: Date;
 }
 
+export interface StockItem {
+  id?: string; // Firestore document ID
+  itemName: string;
+  description?: string;
+  unitOfMeasure: string; // e.g., 'bags', 'kg', 'liters', 'pieces'
+  currentQuantity: number;
+  lowStockThreshold: number;
+  createdAt?: any; // Firestore Timestamp
+  updatedAt?: any; // Firestore Timestamp
+}
+
+// Form values for StockItemForm
+export interface StockItemFormValues {
+  itemName: string;
+  description?: string;
+  unitOfMeasure: string;
+  initialQuantity?: number; // Used when creating a new item, defaults to 0
+  lowStockThreshold: number;
+}
+
 
 // Add other types as needed for tenants etc.
