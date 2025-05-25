@@ -8,7 +8,9 @@ import { PlusCircle } from "lucide-react";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import StockItemForm, { type StockItemFormValues } from "@/components/stock/StockItemForm";
 import StockItemList from "@/components/stock/StockItemList";
-import StockTransactionForm, { type StockTransactionFormValues as StockTransactionSchemaValues } from "@/components/stock/StockTransactionForm"; // Renamed import
+import StockTransactionForm, { type StockTransactionFormValues as StockTransactionSchemaValues } from "@/components/stock/StockTransactionForm";
+import StockTransactionList from "@/components/stock/StockTransactionList"; // New import
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"; // New import
 import { useState } from "react";
 import type { StockItem, StockTransaction } from "@/lib/types";
 import { useAuth } from "@/contexts/AuthProvider";
@@ -146,6 +148,9 @@ export default function StockManagementPage() {
     try {
       await runTransaction(db, async (transaction) => {
         const stockItemRef = doc(db, "stockItems", itemId);
+        // Note: When setting a new document in a transaction, it's often `transaction.set(doc(collectionRef, newId), data)`
+        // or `transaction.set(doc(collectionRef), data)` if you want Firestore to auto-generate the ID.
+        // For simplicity, and if `stockTransactions` IDs aren't critical for immediate client-side use after creation:
         transaction.set(doc(collection(db, "stockTransactions")), transactionData);
         transaction.update(stockItemRef, { currentQuantity: newQuantity, updatedAt: serverTimestamp() });
       });
@@ -190,13 +195,27 @@ export default function StockManagementPage() {
           )
         }
       />
-      <div className="border shadow-sm rounded-lg p-2">
-        <StockItemList
-          onEditStockItem={handleEditStockItem}
-          onRecordStockIn={handleOpenStockInDialog}
-          onRecordStockOut={handleOpenStockOutDialog}
-        />
-      </div>
+      <Tabs defaultValue="stock-items" className="w-full">
+        <TabsList className="grid w-full grid-cols-2 md:w-[400px]">
+          <TabsTrigger value="stock-items">Stock Items</TabsTrigger>
+          <TabsTrigger value="transaction-history">Transaction History</TabsTrigger>
+        </TabsList>
+        <TabsContent value="stock-items" className="mt-6">
+          <div className="border shadow-sm rounded-lg p-2">
+            <StockItemList
+              onEditStockItem={handleEditStockItem}
+              onRecordStockIn={handleOpenStockInDialog}
+              onRecordStockOut={handleOpenStockOutDialog}
+            />
+          </div>
+        </TabsContent>
+        <TabsContent value="transaction-history" className="mt-6">
+          <div className="border shadow-sm rounded-lg p-2">
+            <StockTransactionList />
+          </div>
+        </TabsContent>
+      </Tabs>
+
 
       {/* Dialog for Stock Transaction Form */}
       {currentItemForTransaction && (
@@ -220,3 +239,4 @@ export default function StockManagementPage() {
     </ProtectedRoute>
   );
 }
+

@@ -126,19 +126,19 @@ export interface StockItemFormValues {
 }
 
 export interface StockTransaction {
-  id?: string; // Firestore document ID
+  id?: string; 
   itemId: string;
-  itemName: string; // Denormalized for display
+  itemName: string; 
   transactionType: 'IN' | 'OUT';
-  date: any; // Firestore Timestamp
+  date: any; 
   quantity: number;
-  unitCost?: number; // Required for 'IN', optional for 'OUT'
-  supplier?: string; // For 'IN'
-  issuedTo?: string; // For 'OUT'
+  unitCost?: number; 
+  supplier?: string; 
+  issuedTo?: string; 
   notes?: string;
   recordedByUid: string;
   recordedByName: string;
-  createdAt: any; // Firestore Timestamp
+  createdAt: any; 
 }
 
 export interface StockTransactionFormValues {
@@ -149,3 +149,4 @@ export interface StockTransactionFormValues {
   issuedTo?: string;
   notes?: string;
 }
+
