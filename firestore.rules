@@ -4,87 +4,104 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper Functions
+    // Helper functions
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    function getUserRole(userId) {
-      return get(/databases/{database}/documents/users/{userId}).data.role;
-    }
-
-    // More robust function to get access level, defaulting to a restrictive level if not found
     function getUserAccessLevel(userId) {
-      let userData = get(/databases/{database}/documents/users/{userId}).data;
-      return (userData != null && userData.accessLevel != null) ? userData.accessLevel : 4;
+      let userDoc = get(/databases/$(database)/documents/users/$(userId));
+      // Default to a highly restrictive access level if profile or accessLevel field doesn't exist
+      return userDoc.data.accessLevel != null ? userDoc.data.accessLevel : 4;
     }
 
-    function isAdmin(userId) {
-      return getUserRole(userId) == 'Admin';
+    function getGlobalSettings() {
+      return get(/databases/$(database)/documents/settings/global_settings).data;
     }
 
-    function isOwner(userId) {
-      return request.auth.uid == userId;
-    }
-
-    // Security Rules for 'users' collection
-    match /users/{userId} {
-      allow read: if isAuthenticated() && (isOwner(userId) || getUserAccessLevel(request.auth.uid) == 1); // Admins can also read user profiles
-      allow create: if isAuthenticated() && getUserAccessLevel(request.auth.uid) == 1; // Admin creates users
-      allow update: if isAuthenticated() && (isOwner(userId) || getUserAccessLevel(request.auth.uid) == 1);
-      allow delete: if false; // Generally, don't allow client-side user deletion
-    }
-
-    // Security Rules for 'settings' collection (single document 'global_settings')
+    // Settings collection
     match /settings/global_settings {
-      allow read: if isAuthenticated(); // All authenticated users can read global settings
-      allow write: if isAuthenticated() && getUserAccessLevel(request.auth.uid) == 1; // Only Level 1 can write
+      allow read: if isAuthenticated(); // All authenticated users can read settings
+      allow write: if isAuthenticated() && getUserAccessLevel(request.auth.uid) == 1; // Only Level 1 (Admin) can write
     }
 
-    // Security Rules for 'contributions' collection
+    // Users collection
+    match /users/{userId} {
+      // Rule for reading a single user's profile
+      allow read: if isAuthenticated() && (
+        request.auth.uid == userId ||  // User can read their own profile
+        getUserAccessLevel(request.auth.uid) <= 2 // Level 1 and 2 can read other user profiles
+      );
+
+      // Rule for creating a user profile (usually done by Admin or specific function)
+      // This rule is for direct client-side creation of the Firestore document.
+      allow create: if isAuthenticated() && getUserAccessLevel(request.auth.uid) == 1;
+
+      // Rule for updating a user profile
+      allow update: if isAuthenticated() && (
+        // User can update specific, limited fields of their own profile
+        (request.auth.uid == userId && request.resource.data.keys().hasOnly(['name', 'photoURL', 'tpin', 'requiresPasswordChange'])) ||
+        // Admin (Level 1) can update any field needed for management
+        (getUserAccessLevel(request.auth.uid) == 1 &&
+         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'role', 'accessLevel', 'status', 'requiresPasswordChange']) ||
+          // Allow admin to update email if it's part of user management, though client makes this hard
+          request.resource.data.keys().hasAll(['name', 'role', 'accessLevel', 'status', 'requiresPasswordChange', 'email', 'createdAt'])))
+      );
+
+      // Disallow direct client-side deletion of user profiles
+      allow delete: if false;
+    }
+
+    // Rule for LISTING users (querying the 'users' collection)
+    // This is a more precise path for list operations on the 'users' collection itself.
+    match /users {
+      allow list: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1;
+    }
+
+    // Contributions collection
     match /contributions/{contributionId} {
       allow create: if isAuthenticated() &&
-                       request.resource.data.userId == request.auth.uid &&
+                       request.auth.uid == request.resource.data.userId &&
                        getUserAccessLevel(request.auth.uid) <= 3 &&
-                       request.resource.data.amount > 0; // Basic amount check
-      allow read: if isAuthenticated() &&
-                     (request.resource.data.userId == request.auth.uid || getUserAccessLevel(request.auth.uid) == 1);
-      allow update: if false; // No client-side updates initially
-      allow delete: if false; // No client-side deletes initially
+                       request.resource.data.amount >= getGlobalSettings().contributionMin &&
+                       (getGlobalSettings().contributionMax == 0 || request.resource.data.amount <= getGlobalSettings().contributionMax);
+      allow read: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid || // User can read their own contributions
+        getUserAccessLevel(request.auth.uid) <= 1   // Level 1 can read all contributions
+      );
+      allow update, delete: if false; // Typically handled by backend or admin functions
     }
 
-    // Security Rules for 'expenses' collection
+    // Expenses collection
     match /expenses/{expenseId} {
+      allow read: if isAuthenticated(); // All authenticated users can view expenses as per last instruction
+      // was: getUserAccessLevel(request.auth.uid) <= 3;
       allow create: if isAuthenticated() &&
-                       request.resource.data.enteredByUid == request.auth.uid &&
-                       getUserAccessLevel(request.auth.uid) == 1; // Level 1 can create
-      allow read: if isAuthenticated(); // All authenticated users can read expenses
-      allow update: if isAuthenticated() &&
-                       getUserAccessLevel(request.auth.uid) == 1; // Level 1 can update
-      allow delete: if false; // No client-side deletes initially
+                       getUserAccessLevel(request.auth.uid) <= 1 &&
+                       request.resource.data.enteredByUid == request.auth.uid;
+      allow update: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1;
+      allow delete: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1; // Or set to false if only backend
     }
-    
-    // Security Rules for 'milestones' collection
+
+    // Milestones collection
     match /milestones/{milestoneId} {
-      allow read: if isAuthenticated(); // All authenticated users can read milestones
-      allow create, update, delete: if isAuthenticated() && getUserAccessLevel(request.auth.uid) == 1; // Level 1 can CRUD
+      allow read: if isAuthenticated(); // All authenticated users can view milestones
+      allow create, update, delete: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1;
     }
 
-    // Security Rules for 'stockItems' collection
+    // Stock Items collection
     match /stockItems/{itemId} {
-      allow read: if isAuthenticated(); // All authenticated users can read stock items
-      allow create, update, delete: if isAuthenticated() && getUserAccessLevel(request.auth.uid) == 1; // Level 1 can CRUD
+      allow read: if isAuthenticated(); // All authenticated users can view stock items
+      allow create, update, delete: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1;
     }
 
-    // Placeholder for future collections
-    // match /auditLog/{logId} { ... }
-    // match /stockTransactions/{transactionId} { ... }
-    // match /tenants/{tenantId} { ... }
-    // match /rentInvoices/{invoiceId} { ... }
-    // match /professionals/{professionalId} { ... }
-    // match /bankBalances/{balanceId} { ... }
-    // match /bankTransactions/{transactionId} { ... }
-    // match /companyInfo/details { ... } // Single doc for company info
-
+    // Add rules for other collections here (stockTransactions, tenants, rentInvoices, professionals, etc.)
+    // For example:
+    // match /auditLog/{logId} {
+    //   allow read: if isAuthenticated();
+    //   allow write: if false; // Only backend/functions
+    // }
   }
 }
+
+    
