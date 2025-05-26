@@ -47,10 +47,8 @@ export default function RentInvoiceList(/*{ onEditInvoice, onRecordPayment }: Re
 
     setLoading(true);
     const invoicesRef = collection(db, "rentInvoices");
-    // Temporarily simplified query to order by only one field to avoid needing a composite index immediately
-    // The ideal query is query(invoicesRef, orderBy("invoiceDate", "desc"), orderBy("invoiceNumber", "desc"));
-    // User should create the composite index suggested by Firebase.
-    const q = query(invoicesRef, orderBy("invoiceDate", "desc"));
+    // Revert to the original query now that the index exists
+    const q = query(invoicesRef, orderBy("invoiceDate", "desc"), orderBy("invoiceNumber", "desc"));
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const fetchedInvoices: RentInvoice[] = [];
