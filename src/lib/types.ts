@@ -257,3 +257,38 @@ export interface RentInvoiceFormValues {
   // otherCharges can be added later if needed
   notes?: string;
 }
+
+export type ProfessionalStatus = 'Active' | 'On Hold' | 'Completed' | 'Terminated';
+
+export interface ProfessionalPayment {
+  date: any; // Firestore Timestamp or Date
+  amountPaid: number;
+  notes?: string;
+}
+
+export interface Professional {
+  id?: string;
+  name: string;
+  serviceType: string; // e.g., 'Plumber', 'Electrician', 'Legal Consultant'
+  contactInfo: {
+    phone?: string;
+    email?: string;
+  };
+  assignedJobDescription?: string;
+  totalAgreedCharge: number;
+  paymentHistory: ProfessionalPayment[]; // Array of payments made
+  balanceDue: number; // Auto-calculated: totalAgreedCharge - sum(paymentHistory.amountPaid)
+  status: ProfessionalStatus;
+  createdAt?: any;
+  updatedAt?: any;
+}
+
+export interface ProfessionalFormValues {
+  name: string;
+  serviceType: string;
+  contactPhone?: string;
+  contactEmail?: string;
+  assignedJobDescription?: string;
+  totalAgreedCharge: number;
+  status: ProfessionalStatus;
+}

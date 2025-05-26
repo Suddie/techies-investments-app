@@ -10,7 +10,8 @@ import {
   Users,
   History,
   Landmark,
-  Home // Added Home icon for Tenant Management
+  Home,
+  Briefcase // Added icon for Professional Management
 } from 'lucide-react';
 
 export const ROLES: Record<UserRole, { name: UserRole; accessLevel: AccessLevel }> = {
@@ -54,7 +55,8 @@ export const NAVIGATION_LINKS = [
   { href: "/expenses", label: "Expenses", icon: CreditCard, adminOnly: false, requiredAccessLevel: 3 },
   { href: "/milestones", label: "Project Milestones", icon: ListChecks, adminOnly: false, requiredAccessLevel: 3 },
   { href: "/stock", label: "Stock Management", icon: Archive, adminOnly: false, requiredAccessLevel: 3 },
-  { href: "/tenant-management", label: "Tenant Management", icon: Home, adminOnly: false, requiredAccessLevel: 1 }, // Level 1 to manage tenants
+  { href: "/tenant-management", label: "Tenant Management", icon: Home, adminOnly: false, requiredAccessLevel: 1 }, 
+  { href: "/professionals", label: "Professionals", icon: Briefcase, adminOnly: false, requiredAccessLevel: 1 },
   { href: "/reports", label: "Reports", icon: FileText, adminOnly: false, requiredAccessLevel: 2 },
   { href: "/admin/users", label: "User Management", icon: Users, adminOnly: true, requiredAccessLevel: 1 },
   { href: "/audit-log", label: "Audit Log", icon: History, adminOnly: false, requiredAccessLevel: 3 },
