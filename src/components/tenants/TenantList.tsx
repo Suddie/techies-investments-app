@@ -26,31 +26,41 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'; // Corrected import path
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 interface TenantListProps {
   onEditTenant: (tenant: Tenant) => void;
 }
 
 export default function TenantList({ onEditTenant }: TenantListProps) {
-  const { userProfile } = useAuth();
+  const { userProfile, loading: authLoading } = useAuth(); // Get authLoading state
   const { settings } = useSettings();
   const { db } = useFirebase();
   const { toast } = useToast();
   const [tenants, setTenants] = useState<Tenant[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true); // This component's own loading state for tenant data
   const [tenantToDelete, setTenantToDelete] = useState<Tenant | null>(null);
 
   const canManageTenants = userProfile && userProfile.accessLevel <= 1;
 
   useEffect(() => {
-    if (!userProfile) { // Wait for userProfile to be available
-      setLoading(false); // Not strictly loading tenants yet
-      setTenants([]); // Ensure tenants list is empty if no profile
+    if (authLoading) {
+      // If auth is still loading, ensure this component also shows loading
+      setLoading(true);
       return;
     }
 
-    setLoading(true);
+    if (!userProfile) {
+      // Auth is done, but no user profile (e.g., not logged in, or error fetching profile)
+      setLoading(false);
+      setTenants([]); // Clear any existing tenants
+      // A toast here might be redundant if ProtectedRoute handles redirection
+      // toast({ title: "Access Denied", description: "User profile not available to fetch tenants.", variant: "destructive" });
+      return;
+    }
+
+    // Proceed with fetching tenants only if auth is done and userProfile exists
+    setLoading(true); // Start loading tenant data
     const tenantsRef = collection(db, "tenants");
     const q = query(tenantsRef, orderBy("name", "asc"));
 
@@ -68,7 +78,7 @@ export default function TenantList({ onEditTenant }: TenantListProps) {
         } as Tenant);
       });
       setTenants(fetchedTenants);
-      setLoading(false);
+      setLoading(false); // Finished loading tenant data
     }, (err) => {
       console.error("Error fetching tenants:", err);
       toast({
@@ -77,11 +87,11 @@ export default function TenantList({ onEditTenant }: TenantListProps) {
         variant: "destructive",
         duration: 7000,
       });
-      setLoading(false);
+      setLoading(false); // Finished loading (with error)
     });
 
     return () => unsubscribe();
-  }, [db, toast, userProfile]); // Added userProfile to dependency array
+  }, [db, toast, userProfile, authLoading]); // Add authLoading to dependency array
 
   const handleDeleteTenant = async () => {
     if (!tenantToDelete || !tenantToDelete.id || !canManageTenants) {
@@ -112,10 +122,10 @@ export default function TenantList({ onEditTenant }: TenantListProps) {
     }
   };
 
-  if (loading) {
+  if (authLoading || loading) { // Combined loading state check
     return (
       <Card>
-        <CardHeader><CardTitle>Loading Tenant Data...</CardTitle></CardHeader>
+        <CardHeader><CardTitle>{authLoading ? "Authenticating User..." : "Loading Tenant Data..."}</CardTitle></CardHeader>
         <CardContent className="space-y-3 p-4">
           {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-10 w-full rounded-md" />)}
         </CardContent>
@@ -123,16 +133,16 @@ export default function TenantList({ onEditTenant }: TenantListProps) {
     );
   }
 
-  if (!userProfile && !loading) { // Handle case where userProfile is still null after initial load attempt
+  if (!userProfile && !authLoading) { 
     return (
         <Card>
             <CardHeader>
                 <CardTitle>Tenant Management</CardTitle>
-                <CardDescription>Authenticating user...</CardDescription>
+                <CardDescription>User not authenticated or profile missing.</CardDescription>
             </CardHeader>
             <CardContent>
                 <p className="text-center text-muted-foreground py-8">
-                    Please wait or ensure you are logged in with appropriate permissions.
+                    Please ensure you are logged in with appropriate permissions.
                 </p>
             </CardContent>
         </Card>
@@ -188,7 +198,7 @@ export default function TenantList({ onEditTenant }: TenantListProps) {
                   {tenant.rentAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </TableCell>
                 <TableCell className="hidden sm:table-cell">
-                  {tenant.leaseEndDate ? format(new Date(tenant.leaseEndDate), "PP") : <span className="text-muted-foreground/70">-</span>}
+                  {tenant.leaseEndDate ? format(tenant.leaseEndDate instanceof Timestamp ? tenant.leaseEndDate.toDate() : new Date(tenant.leaseEndDate), "PP") : <span className="text-muted-foreground/70">-</span>}
                 </TableCell>
                 <TableCell>
                   <Badge variant="outline" className={getStatusBadgeClass(tenant.status)}>{tenant.status}</Badge>
