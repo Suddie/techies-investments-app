@@ -8,14 +8,15 @@ import { PlusCircle } from "lucide-react";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import TenantForm, { type TenantFormValues } from "@/components/tenants/TenantForm";
 import TenantList from "@/components/tenants/TenantList";
-import RentInvoiceForm, { type RentInvoiceFormValues } from "@/components/tenants/RentInvoiceForm"; // New Import
+import RentInvoiceForm, { type RentInvoiceFormValues } from "@/components/tenants/RentInvoiceForm"; 
+import RentInvoiceList from "@/components/tenants/RentInvoiceList"; // New Import
 import { useState } from "react";
-import type { Tenant, RentInvoice } from "@/lib/types"; // RentInvoice added
+import type { Tenant, RentInvoice } from "@/lib/types"; 
 import { useAuth } from "@/contexts/AuthProvider";
 import { useFirebase } from "@/contexts/FirebaseProvider";
 import { useToast } from "@/hooks/use-toast";
 import { collection, addDoc, serverTimestamp, doc, updateDoc, Timestamp } from "firebase/firestore";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"; // For potential future use (e.g. Invoices List tab)
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"; 
 
 export default function TenantManagementPage() {
   const { userProfile } = useAuth();
@@ -214,8 +215,7 @@ export default function TenantManagementPage() {
         </TabsContent>
         <TabsContent value="invoices">
            <div className="border shadow-sm rounded-lg p-2 mt-4">
-            {/* Placeholder for RentInvoiceList component */}
-            <p className="text-center text-muted-foreground py-8">Rent invoice list will be displayed here.</p>
+             <RentInvoiceList />
           </div>
         </TabsContent>
       </Tabs>
