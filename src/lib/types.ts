@@ -180,3 +180,41 @@ export interface BankBalanceFormValues {
   interestEarned?: number;
   bankCharges?: number;
 }
+
+export type TenantStatus = 'Active' | 'Inactive' | 'Pending';
+export type PaymentFrequency = 'Monthly' | 'Quarterly' | 'Annually' | 'Bi-Annually';
+
+export interface Tenant {
+  id?: string;
+  name: string;
+  unitNumber: string;
+  contactInfo: {
+    phone?: string;
+    email?: string;
+    address?: string;
+  };
+  rentAmount: number;
+  paymentFrequency: PaymentFrequency;
+  leaseStartDate?: any; // Firestore Timestamp or Date
+  leaseEndDate?: any; // Firestore Timestamp or Date
+  status: TenantStatus;
+  arrearsBroughtForward?: number; // Default to 0
+  notes?: string;
+  createdAt?: any;
+  updatedAt?: any;
+}
+
+export interface TenantFormValues {
+  name: string;
+  unitNumber: string;
+  contactPhone?: string;
+  contactEmail?: string;
+  contactAddress?: string;
+  rentAmount: number;
+  paymentFrequency: PaymentFrequency;
+  leaseStartDate?: Date;
+  leaseEndDate?: Date;
+  status: TenantStatus;
+  arrearsBroughtForward?: number;
+  notes?: string;
+}
