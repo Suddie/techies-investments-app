@@ -47,8 +47,10 @@ export default function RentInvoiceList(/*{ onEditInvoice, onRecordPayment }: Re
 
     setLoading(true);
     const invoicesRef = collection(db, "rentInvoices");
-    // Order by invoiceDate descending, then by invoiceNumber as a secondary sort
-    const q = query(invoicesRef, orderBy("invoiceDate", "desc"), orderBy("invoiceNumber", "desc"));
+    // Temporarily simplified query to order by only one field to avoid needing a composite index immediately
+    // The ideal query is query(invoicesRef, orderBy("invoiceDate", "desc"), orderBy("invoiceNumber", "desc"));
+    // User should create the composite index suggested by Firebase.
+    const q = query(invoicesRef, orderBy("invoiceDate", "desc"));
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const fetchedInvoices: RentInvoice[] = [];
@@ -72,9 +74,9 @@ export default function RentInvoiceList(/*{ onEditInvoice, onRecordPayment }: Re
       console.error("Error fetching rent invoices:", err);
       toast({
         title: "Error Fetching Invoices",
-        description: `Could not load rent invoices: ${err.message}. Check Firestore permissions.`,
+        description: `Could not load rent invoices: ${err.message}. Check Firestore permissions or if a required index is missing.`,
         variant: "destructive",
-        duration: 7000,
+        duration: 10000,
       });
       setLoading(false);
     });
