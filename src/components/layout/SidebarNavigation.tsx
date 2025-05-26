@@ -1,25 +1,15 @@
+
 "use client";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import * as LucideIcons from "lucide-react";
+import { HelpCircle } from "lucide-react"; // Keep a fallback or handle if link.icon is undefined
 import { cn } from "@/lib/utils";
-import { NAVIGATION_LINKS, APP_NAME } from "@/lib/constants";
+import { NAVIGATION_LINKS } from "@/lib/constants"; // APP_NAME removed as it's not used here directly
 import { useAuth } from "@/contexts/AuthProvider";
 import { useSettings } from "@/contexts/SettingsProvider";
 import Image from "next/image";
-
-type IconName = keyof typeof LucideIcons;
-
-const Icon = ({ name, ...props }: { name: IconName } & LucideIcons.LucideProps) => {
-  const LucideIcon = LucideIcons[name] as React.ElementType;
-  if (!LucideIcon) {
-    // Fallback icon or handle error
-    return <LucideIcons.HelpCircle {...props} />;
-  }
-  return <LucideIcon {...props} />;
-};
-
+import type React from 'react'; // Import React for React.ElementType
 
 export default function SidebarNavigation() {
   const pathname = usePathname();
@@ -48,21 +38,24 @@ export default function SidebarNavigation() {
       </div>
       <div className="flex-1">
         <nav className="grid items-start px-2 text-sm font-medium lg:px-4 py-4">
-          {filteredNavLinks.map((link) => (
-            <Link
-              key={link.label}
-              href={link.href}
-              className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                pathname === link.href || (link.href !== "/dashboard" && pathname.startsWith(link.href))
-                  ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                  : "text-sidebar-foreground"
-              )}
-            >
-              <Icon name={link.icon as IconName} className="h-4 w-4" />
-              {link.label}
-            </Link>
-          ))}
+          {filteredNavLinks.map((link) => {
+            const IconComponent = link.icon as React.ElementType; // Cast to React.ElementType
+            return (
+              <Link
+                key={link.label}
+                href={link.href}
+                className={cn(
+                  "flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                  pathname === link.href || (link.href !== "/dashboard" && pathname.startsWith(link.href))
+                    ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                    : "text-sidebar-foreground"
+                )}
+              >
+                {IconComponent ? <IconComponent className="h-4 w-4" /> : <HelpCircle className="h-4 w-4" /> }
+                {link.label}
+              </Link>
+            );
+          })}
         </nav>
       </div>
       {/* Optional: Sidebar footer content */}
