@@ -26,7 +26,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'; // Corrected import path
 
 interface TenantListProps {
   onEditTenant: (tenant: Tenant) => void;
@@ -44,6 +44,12 @@ export default function TenantList({ onEditTenant }: TenantListProps) {
   const canManageTenants = userProfile && userProfile.accessLevel <= 1;
 
   useEffect(() => {
+    if (!userProfile) { // Wait for userProfile to be available
+      setLoading(false); // Not strictly loading tenants yet
+      setTenants([]); // Ensure tenants list is empty if no profile
+      return;
+    }
+
     setLoading(true);
     const tenantsRef = collection(db, "tenants");
     const q = query(tenantsRef, orderBy("name", "asc"));
@@ -75,7 +81,7 @@ export default function TenantList({ onEditTenant }: TenantListProps) {
     });
 
     return () => unsubscribe();
-  }, [db, toast]);
+  }, [db, toast, userProfile]); // Added userProfile to dependency array
 
   const handleDeleteTenant = async () => {
     if (!tenantToDelete || !tenantToDelete.id || !canManageTenants) {
@@ -117,6 +123,22 @@ export default function TenantList({ onEditTenant }: TenantListProps) {
     );
   }
 
+  if (!userProfile && !loading) { // Handle case where userProfile is still null after initial load attempt
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Tenant Management</CardTitle>
+                <CardDescription>Authenticating user...</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <p className="text-center text-muted-foreground py-8">
+                    Please wait or ensure you are logged in with appropriate permissions.
+                </p>
+            </CardContent>
+        </Card>
+    );
+  }
+  
   if (tenants.length === 0) {
     return (
       <Card>
@@ -166,7 +188,7 @@ export default function TenantList({ onEditTenant }: TenantListProps) {
                   {tenant.rentAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </TableCell>
                 <TableCell className="hidden sm:table-cell">
-                  {tenant.leaseEndDate ? format(tenant.leaseEndDate, "PP") : <span className="text-muted-foreground/70">-</span>}
+                  {tenant.leaseEndDate ? format(new Date(tenant.leaseEndDate), "PP") : <span className="text-muted-foreground/70">-</span>}
                 </TableCell>
                 <TableCell>
                   <Badge variant="outline" className={getStatusBadgeClass(tenant.status)}>{tenant.status}</Badge>
@@ -219,3 +241,4 @@ export default function TenantList({ onEditTenant }: TenantListProps) {
     </Card>
   );
 }
+
