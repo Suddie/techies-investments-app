@@ -8,12 +8,13 @@ import { PlusCircle } from "lucide-react";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import ProfessionalForm, { type ProfessionalFormValues } from "@/components/professionals/ProfessionalForm";
 import ProfessionalList from "@/components/professionals/ProfessionalList";
+import ProfessionalPaymentForm, { type ProfessionalPaymentFormValues } from "@/components/professionals/ProfessionalPaymentForm"; // New Import
 import { useState } from "react";
-import type { Professional } from "@/lib/types";
+import type { Professional, ProfessionalPayment } from "@/lib/types";
 import { useAuth } from "@/contexts/AuthProvider";
 import { useFirebase } from "@/contexts/FirebaseProvider";
 import { useToast } from "@/hooks/use-toast";
-import { collection, addDoc, serverTimestamp, doc, updateDoc } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, doc, updateDoc, getDoc, Timestamp } from "firebase/firestore";
 
 export default function ProfessionalsPage() {
   const { userProfile } = useAuth();
@@ -22,6 +23,11 @@ export default function ProfessionalsPage() {
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingProfessional, setEditingProfessional] = useState<Professional | null>(null);
+
+  // State for Payment Form
+  const [isPaymentFormOpen, setIsPaymentFormOpen] = useState(false);
+  const [professionalForPayment, setProfessionalForPayment] = useState<Professional | null>(null);
+
 
   const canManageProfessionals = userProfile && userProfile.accessLevel <= 1;
 
@@ -52,8 +58,8 @@ export default function ProfessionalsPage() {
     const professionalData: Omit<Professional, "id" | "createdAt" | "updatedAt" | "paymentHistory" | "balanceDue"> & {
       createdAt?: any;
       updatedAt?: any;
-      paymentHistory: []; // Initialize empty payment history
-      balanceDue: number;  // Initially, balance due is the total agreed charge
+      paymentHistory: ProfessionalPayment[]; 
+      balanceDue: number;  
     } = {
       name: data.name,
       serviceType: data.serviceType,
@@ -64,24 +70,25 @@ export default function ProfessionalsPage() {
       assignedJobDescription: data.assignedJobDescription || "",
       totalAgreedCharge: data.totalAgreedCharge,
       status: data.status,
-      paymentHistory: [], // New professionals start with no payment history
-      balanceDue: data.totalAgreedCharge, // Initially balance due is full agreed charge
+      paymentHistory: [], 
+      balanceDue: data.totalAgreedCharge, 
     };
 
     try {
       if (professionalId) {
         const professionalDocRef = doc(db, "professionals", professionalId);
-        professionalData.updatedAt = serverTimestamp();
-        // When editing, retain existing paymentHistory and recalculate balanceDue if totalAgreedCharge changes
-        // For simplicity now, we are not re-calculating balance due on edit of totalAgreedCharge based on existing payments
-        // A more robust solution would re-evaluate balanceDue if totalAgreedCharge changes and payments exist.
-        const existingDoc = await professionalDocRef.get();
-        const existingData = existingDoc.data() as Professional | undefined;
-        if (existingData) {
-             professionalData.paymentHistory = existingData.paymentHistory; // Keep existing payments
-             professionalData.balanceDue = data.totalAgreedCharge - (existingData.paymentHistory?.reduce((sum, p) => sum + p.amountPaid, 0) || 0);
+        
+        const existingDocSnap = await getDoc(professionalDocRef);
+        if (!existingDocSnap.exists()) {
+            toast({ title: "Error", description: "Professional record not found for update.", variant: "destructive" });
+            return;
         }
-
+        const existingData = existingDocSnap.data() as Professional;
+        
+        professionalData.paymentHistory = existingData.paymentHistory || []; // Retain existing payment history
+        const totalPaid = professionalData.paymentHistory.reduce((sum, p) => sum + p.amountPaid, 0);
+        professionalData.balanceDue = data.totalAgreedCharge - totalPaid; // Recalculate balance due based on new total charge
+        
         await updateDoc(professionalDocRef, {
             name: professionalData.name,
             serviceType: professionalData.serviceType,
@@ -89,8 +96,8 @@ export default function ProfessionalsPage() {
             assignedJobDescription: professionalData.assignedJobDescription,
             totalAgreedCharge: professionalData.totalAgreedCharge,
             status: professionalData.status,
-            balanceDue: professionalData.balanceDue, // update balanceDue
-            // paymentHistory is not directly updated here; it's updated via a separate payment recording mechanism.
+            balanceDue: professionalData.balanceDue, 
+            paymentHistory: professionalData.paymentHistory, // Persist potentially existing payment history
             updatedAt: serverTimestamp(),
         });
         toast({ title: "Professional Updated", description: `Details for ${data.name} have been updated.` });
@@ -111,6 +118,57 @@ export default function ProfessionalsPage() {
       });
     }
   };
+
+  const handleOpenRecordPaymentDialog = (professional: Professional) => {
+    if (!canManageProfessionals) {
+      toast({ title: "Access Denied", description: "You do not have permission to record payments.", variant: "destructive" });
+      return;
+    }
+    setProfessionalForPayment(professional);
+    setIsPaymentFormOpen(true);
+  };
+
+  const handleSavePayment = async (paymentData: ProfessionalPaymentFormValues, professional: Professional) => {
+    if (!canManageProfessionals || !professional || !professional.id) {
+        toast({ title: "Error", description: "Cannot record payment or missing data.", variant: "destructive"});
+        return;
+    }
+
+    const professionalDocRef = doc(db, "professionals", professional.id);
+
+    try {
+        const docSnap = await getDoc(professionalDocRef);
+        if (!docSnap.exists()) {
+            toast({ title: "Error", description: "Professional not found.", variant: "destructive" });
+            return;
+        }
+
+        const currentProfessionalData = docSnap.data() as Professional;
+        const newPayment: ProfessionalPayment = {
+            date: Timestamp.fromDate(paymentData.date),
+            amountPaid: paymentData.amountPaid,
+            notes: paymentData.notes || "",
+        };
+
+        const updatedPaymentHistory = [...(currentProfessionalData.paymentHistory || []), newPayment];
+        const totalPaid = updatedPaymentHistory.reduce((sum, p) => sum + p.amountPaid, 0);
+        const newBalanceDue = currentProfessionalData.totalAgreedCharge - totalPaid;
+
+        await updateDoc(professionalDocRef, {
+            paymentHistory: updatedPaymentHistory,
+            balanceDue: newBalanceDue,
+            updatedAt: serverTimestamp(),
+        });
+
+        toast({ title: "Payment Recorded", description: `Payment of ${paymentData.amountPaid} for ${professional.name} recorded.` });
+        setIsPaymentFormOpen(false);
+        setProfessionalForPayment(null);
+    } catch (error: any) {
+        console.error("Error recording payment:", error);
+        toast({ title: "Payment Failed", description: error.message, variant: "destructive" });
+    }
+  };
+
 
   return (
     <ProtectedRoute requiredAccessLevel={1}>
@@ -145,9 +203,28 @@ export default function ProfessionalsPage() {
       <div className="border shadow-sm rounded-lg p-2 mt-6">
         <ProfessionalList 
             onEditProfessional={handleEditProfessional} 
-            // onRecordPayment will be added later
+            onRecordPayment={handleOpenRecordPaymentDialog}
         />
       </div>
+
+      {/* Payment Form Dialog */}
+      {professionalForPayment && (
+        <Dialog open={isPaymentFormOpen} onOpenChange={(isOpen) => {
+          setIsPaymentFormOpen(isOpen);
+          if (!isOpen) setProfessionalForPayment(null);
+        }}>
+          <DialogContent className="sm:max-w-md">
+            <ProfessionalPaymentForm
+              professional={professionalForPayment}
+              onSave={(paymentData) => handleSavePayment(paymentData, professionalForPayment)}
+              onCancel={() => {
+                setIsPaymentFormOpen(false);
+                setProfessionalForPayment(null);
+              }}
+            />
+          </DialogContent>
+        </Dialog>
+      )}
     </ProtectedRoute>
   );
 }

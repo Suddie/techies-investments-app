@@ -9,11 +9,11 @@ import { useAuth } from '@/contexts/AuthProvider';
 import { useSettings } from '@/contexts/SettingsProvider';
 import { useFirebase } from '@/contexts/FirebaseProvider';
 import { collection, query, orderBy, onSnapshot, doc, deleteDoc } from 'firebase/firestore';
-import { format } from 'date-fns';
+// import { format } from 'date-fns'; // Not used currently
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from "@/components/ui/button";
-import { MoreHorizontal, Edit2, Trash2, Phone, Mail, Briefcase } from "lucide-react";
+import { MoreHorizontal, Edit2, Trash2, Phone, Mail, Briefcase, DollarSign } from "lucide-react"; // Added DollarSign
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
@@ -30,10 +30,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 
 interface ProfessionalListProps {
   onEditProfessional: (professional: Professional) => void;
-  // onRecordPayment: (professional: Professional) => void; // To be added later
+  onRecordPayment: (professional: Professional) => void; 
 }
 
-export default function ProfessionalList({ onEditProfessional }: ProfessionalListProps) {
+export default function ProfessionalList({ onEditProfessional, onRecordPayment }: ProfessionalListProps) {
   const { userProfile, loading: authLoading } = useAuth();
   const { settings } = useSettings();
   const { db } = useFirebase();
@@ -213,11 +213,9 @@ export default function ProfessionalList({ onEditProfessional }: ProfessionalLis
                           <DropdownMenuItem onClick={() => onEditProfessional(prof)}>
                             <Edit2 className="mr-2 h-4 w-4" /> Edit Details
                           </DropdownMenuItem>
-                          {/* 
-                          <DropdownMenuItem onClick={() => onRecordPayment?.(prof)}> // To be implemented
+                          <DropdownMenuItem onClick={() => onRecordPayment(prof)}>
                             <DollarSign className="mr-2 h-4 w-4" /> Record Payment
                           </DropdownMenuItem>
-                          */}
                           <DropdownMenuSeparator />
                           <AlertDialogTrigger asChild>
                             <DropdownMenuItem

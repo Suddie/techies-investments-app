@@ -292,3 +292,9 @@ export interface ProfessionalFormValues {
   totalAgreedCharge: number;
   status: ProfessionalStatus;
 }
+
+export interface ProfessionalPaymentFormValues {
+  date: Date;
+  amountPaid: number;
+  notes?: string;
+}
