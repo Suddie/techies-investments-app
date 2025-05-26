@@ -13,8 +13,8 @@ import { format } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from "@/components/ui/button";
-import { MoreHorizontal, Edit2, Trash2, Phone, Mail } from "lucide-react";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { MoreHorizontal, Edit2, Trash2, Phone, Mail, FilePlus2 } from "lucide-react"; // Added FilePlus2
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,37 +30,33 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 
 interface TenantListProps {
   onEditTenant: (tenant: Tenant) => void;
+  onCreateInvoice: (tenant: Tenant) => void; // New prop
 }
 
-export default function TenantList({ onEditTenant }: TenantListProps) {
-  const { userProfile, loading: authLoading } = useAuth(); // Get authLoading state
+export default function TenantList({ onEditTenant, onCreateInvoice }: TenantListProps) {
+  const { userProfile, loading: authLoading } = useAuth();
   const { settings } = useSettings();
   const { db } = useFirebase();
   const { toast } = useToast();
   const [tenants, setTenants] = useState<Tenant[]>([]);
-  const [loading, setLoading] = useState(true); // This component's own loading state for tenant data
+  const [loading, setLoading] = useState(true);
   const [tenantToDelete, setTenantToDelete] = useState<Tenant | null>(null);
 
   const canManageTenants = userProfile && userProfile.accessLevel <= 1;
 
   useEffect(() => {
     if (authLoading) {
-      // If auth is still loading, ensure this component also shows loading
       setLoading(true);
       return;
     }
 
     if (!userProfile) {
-      // Auth is done, but no user profile (e.g., not logged in, or error fetching profile)
       setLoading(false);
-      setTenants([]); // Clear any existing tenants
-      // A toast here might be redundant if ProtectedRoute handles redirection
-      // toast({ title: "Access Denied", description: "User profile not available to fetch tenants.", variant: "destructive" });
+      setTenants([]);
       return;
     }
 
-    // Proceed with fetching tenants only if auth is done and userProfile exists
-    setLoading(true); // Start loading tenant data
+    setLoading(true);
     const tenantsRef = collection(db, "tenants");
     const q = query(tenantsRef, orderBy("name", "asc"));
 
@@ -78,7 +74,7 @@ export default function TenantList({ onEditTenant }: TenantListProps) {
         } as Tenant);
       });
       setTenants(fetchedTenants);
-      setLoading(false); // Finished loading tenant data
+      setLoading(false);
     }, (err) => {
       console.error("Error fetching tenants:", err);
       toast({
@@ -87,11 +83,11 @@ export default function TenantList({ onEditTenant }: TenantListProps) {
         variant: "destructive",
         duration: 7000,
       });
-      setLoading(false); // Finished loading (with error)
+      setLoading(false);
     });
 
     return () => unsubscribe();
-  }, [db, toast, userProfile, authLoading]); // Add authLoading to dependency array
+  }, [db, toast, userProfile, authLoading]);
 
   const handleDeleteTenant = async () => {
     if (!tenantToDelete || !tenantToDelete.id || !canManageTenants) {
@@ -122,7 +118,7 @@ export default function TenantList({ onEditTenant }: TenantListProps) {
     }
   };
 
-  if (authLoading || loading) { // Combined loading state check
+  if (authLoading || loading) {
     return (
       <Card>
         <CardHeader><CardTitle>{authLoading ? "Authenticating User..." : "Loading Tenant Data..."}</CardTitle></CardHeader>
@@ -169,7 +165,7 @@ export default function TenantList({ onEditTenant }: TenantListProps) {
     <Card>
       <CardHeader>
         <CardTitle>Tenant Roster</CardTitle>
-        <CardDescription>Overview of all current and past tenants.</CardDescription>
+        <CardDescription>Overview of all current and past tenants. Level 1 users can manage tenants and invoices.</CardDescription>
       </CardHeader>
       <CardContent>
         <Table>
@@ -214,16 +210,20 @@ export default function TenantList({ onEditTenant }: TenantListProps) {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                          <DropdownMenuLabel>Manage Tenant</DropdownMenuLabel>
                           <DropdownMenuItem onClick={() => onEditTenant(tenant)}>
-                            <Edit2 className="mr-2 h-4 w-4" /> Edit
+                            <Edit2 className="mr-2 h-4 w-4" /> Edit Tenant
                           </DropdownMenuItem>
+                           <DropdownMenuItem onClick={() => onCreateInvoice(tenant)}>
+                            <FilePlus2 className="mr-2 h-4 w-4" /> Create Invoice
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
                           <AlertDialogTrigger asChild>
                             <DropdownMenuItem
                               className="text-destructive focus:text-destructive focus:bg-destructive/10"
                               onClick={() => setTenantToDelete(tenant)}
                             >
-                              <Trash2 className="mr-2 h-4 w-4" /> Delete
+                              <Trash2 className="mr-2 h-4 w-4" /> Delete Tenant
                             </DropdownMenuItem>
                           </AlertDialogTrigger>
                         </DropdownMenuContent>
@@ -251,4 +251,3 @@ export default function TenantList({ onEditTenant }: TenantListProps) {
     </Card>
   );
 }
-

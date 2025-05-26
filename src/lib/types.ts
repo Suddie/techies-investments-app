@@ -218,3 +218,42 @@ export interface TenantFormValues {
   arrearsBroughtForward?: number;
   notes?: string;
 }
+
+export type InvoiceStatus = 'Draft' | 'Sent' | 'Paid' | 'Overdue' | 'Cancelled';
+
+export interface RentInvoice {
+  id?: string;
+  tenantId: string;
+  tenantName: string; // Denormalized for easier display
+  unitNumber: string; // Denormalized
+  invoiceNumber: string; // Should be generated, e.g., INV-YYYYMM-SEQ
+  invoiceDate: any; // Firestore Timestamp
+  dueDate: any; // Firestore Timestamp
+  periodCoveredStart: any; // Firestore Timestamp
+  periodCoveredEnd: any; // Firestore Timestamp
+  rentAmount: number;
+  arrearsBroughtForward: number;
+  otherCharges?: { description: string; amount: number }[];
+  totalDue: number;
+  amountPaid: number;
+  datePaid?: any; // Firestore Timestamp
+  paymentMethod?: string;
+  status: InvoiceStatus;
+  notes?: string;
+  createdByUid: string;
+  createdByName: string;
+  createdAt: any;
+  updatedAt?: any;
+}
+
+export interface RentInvoiceFormValues {
+  tenantId: string;
+  invoiceDate: Date;
+  dueDate: Date;
+  periodCoveredStart: Date;
+  periodCoveredEnd: Date;
+  rentAmount: number;
+  arrearsBroughtForward?: number; // Optional, can be fetched or manually entered
+  // otherCharges can be added later if needed
+  notes?: string;
+}
