@@ -28,7 +28,10 @@ const professionalFormSchema = z.object({
   name: z.string().min(2, "Name is required.").max(100),
   serviceType: z.string().min(2, "Service type is required.").max(100, "Service type too long."),
   contactPhone: z.string().max(20).optional(),
-  contactEmail: z.string().email("Invalid email format.").max(100).optional(),
+  contactEmail: z.preprocess(
+    (val) => (val === "" ? undefined : val), // If empty string, treat as undefined
+    z.string().email("Invalid email format.").max(100, "Email is too long.").optional()
+  ),
   assignedJobDescription: z.string().max(1000, "Description is too long.").optional(),
   totalAgreedCharge: z.coerce.number().min(0, "Agreed charge must be non-negative."),
   status: z.enum(professionalStatuses),
