@@ -299,3 +299,4 @@ export interface ProfessionalPaymentFormValues {
   amountPaid: number;
   notes?: string;
 }
+

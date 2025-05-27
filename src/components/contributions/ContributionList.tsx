@@ -208,3 +208,4 @@ export default function ContributionList() {
     </Card>
   );
 }
+
