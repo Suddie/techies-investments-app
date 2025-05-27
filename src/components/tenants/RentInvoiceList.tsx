@@ -13,15 +13,19 @@ import { format } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from "@/components/ui/button";
-import { MoreHorizontal, Edit2, Trash2, FileText, CheckCircle, AlertTriangle, Send, CircleSlash, Download } from "lucide-react";
+import { MoreHorizontal, Download, FileText, CheckCircle, AlertTriangle, Send, CircleSlash, DollarSign } from "lucide-react"; // Added DollarSign
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import InvoicePDFView from './InvoicePDFView';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
-import { createRoot } from 'react-dom/client'; // Changed import
+import { createRoot } from 'react-dom/client';
 
-export default function RentInvoiceList() {
+interface RentInvoiceListProps {
+  onRecordPayment: (invoice: RentInvoice) => void;
+}
+
+export default function RentInvoiceList({ onRecordPayment }: RentInvoiceListProps) {
   const { userProfile, loading: authLoading } = useAuth();
   const { settings } = useSettings();
   const { db } = useFirebase();
@@ -99,14 +103,13 @@ export default function RentInvoiceList() {
     if (!pdfRenderRef.current || !invoice) return;
 
     const pdfContainer = pdfRenderRef.current;
-    const root = createRoot(pdfContainer); // Use createRoot
+    const root = createRoot(pdfContainer); 
     
     root.render(<InvoicePDFView invoice={invoice} settings={settings} />);
 
-    // Give React a moment to render before capturing with html2canvas
     setTimeout(async () => {
       try {
-        if (pdfContainer.firstChild) { // Ensure there's content
+        if (pdfContainer.firstChild) { 
             const canvas = await html2canvas(pdfContainer.firstChild as HTMLElement, { 
             scale: 2, 
             useCORS: true,
@@ -143,9 +146,9 @@ export default function RentInvoiceList() {
         console.error("Error generating PDF:", error);
         toast({title: "PDF Generation Error", description: "Could not generate PDF.", variant: "destructive"});
       } finally {
-        root.unmount(); // Unmount after processing
+        root.unmount(); 
       }
-    }, 100); // A short delay to help ensure rendering completes. Adjust if necessary.
+    }, 100); 
   };
 
 
@@ -234,6 +237,7 @@ export default function RentInvoiceList() {
             {invoices.map((invoice) => {
               const statusInfo = getStatusBadgeInfo(invoice.status);
               const StatusIcon = statusInfo.icon;
+              const isPayable = invoice.status !== 'Paid' && invoice.status !== 'Cancelled';
               return (
                 <TableRow key={invoice.id}>
                   <TableCell className="font-mono text-xs">{invoice.invoiceNumber}</TableCell>
@@ -267,6 +271,12 @@ export default function RentInvoiceList() {
                           <DropdownMenuItem onClick={() => handleDownloadPDF(invoice)}>
                             <Download className="mr-2 h-4 w-4" /> Download PDF
                           </DropdownMenuItem>
+                          {isPayable && (
+                            <DropdownMenuItem onClick={() => onRecordPayment(invoice)}>
+                              <DollarSign className="mr-2 h-4 w-4" /> Record Payment
+                            </DropdownMenuItem>
+                          )}
+                          {/* Add more actions like Edit, Send Reminder, Cancel Invoice later */}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
@@ -280,4 +290,3 @@ export default function RentInvoiceList() {
     </Card>
   );
 }
-

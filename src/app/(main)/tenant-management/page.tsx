@@ -9,13 +9,14 @@ import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import TenantForm, { type TenantFormValues } from "@/components/tenants/TenantForm";
 import TenantList from "@/components/tenants/TenantList";
 import RentInvoiceForm, { type RentInvoiceFormValues } from "@/components/tenants/RentInvoiceForm"; 
-import RentInvoiceList from "@/components/tenants/RentInvoiceList"; // New Import
+import RentInvoiceList from "@/components/tenants/RentInvoiceList"; 
+import RecordInvoicePaymentForm, { type RecordInvoicePaymentFormValues } from "@/components/tenants/RecordInvoicePaymentForm"; // New import
 import { useState } from "react";
 import type { Tenant, RentInvoice } from "@/lib/types"; 
 import { useAuth } from "@/contexts/AuthProvider";
 import { useFirebase } from "@/contexts/FirebaseProvider";
 import { useToast } from "@/hooks/use-toast";
-import { collection, addDoc, serverTimestamp, doc, updateDoc, Timestamp } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, doc, updateDoc, Timestamp, runTransaction } from "firebase/firestore";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"; 
 
 export default function TenantManagementPage() {
@@ -30,7 +31,11 @@ export default function TenantManagementPage() {
   // State for Rent Invoice Form
   const [isRentInvoiceFormOpen, setIsRentInvoiceFormOpen] = useState(false);
   const [tenantForInvoice, setTenantForInvoice] = useState<Tenant | null>(null);
-  const [editingInvoice, setEditingInvoice] = useState<RentInvoice | null>(null); // For editing invoices later
+  const [editingInvoice, setEditingInvoice] = useState<RentInvoice | null>(null); 
+
+  // State for Record Invoice Payment Form
+  const [isRecordPaymentFormOpen, setIsRecordPaymentFormOpen] = useState(false);
+  const [invoiceForPayment, setInvoiceForPayment] = useState<RentInvoice | null>(null);
 
   const canManageTenants = userProfile && userProfile.accessLevel <= 1;
 
@@ -111,7 +116,7 @@ export default function TenantManagementPage() {
       return;
     }
     setTenantForInvoice(tenant);
-    setEditingInvoice(null); // For new invoice
+    setEditingInvoice(null); 
     setIsRentInvoiceFormOpen(true);
   };
 
@@ -121,7 +126,7 @@ export default function TenantManagementPage() {
       return;
     }
 
-    const totalDue = data.rentAmount + (data.arrearsBroughtForward || 0); // Basic calculation
+    const totalDue = data.rentAmount + (data.arrearsBroughtForward || 0); 
 
     const invoiceData: Omit<RentInvoice, "id" | "createdAt" | "updatedAt" | "invoiceDate" | "dueDate" | "periodCoveredStart" | "periodCoveredEnd" | "datePaid"> & {
       createdAt?: any; updatedAt?: any; invoiceDate: any; dueDate: any; periodCoveredStart: any; periodCoveredEnd: any; datePaid?:any;
@@ -129,7 +134,7 @@ export default function TenantManagementPage() {
       tenantId: tenantForInvoice.id!,
       tenantName: tenantForInvoice.name,
       unitNumber: tenantForInvoice.unitNumber,
-      invoiceNumber: `INV-${new Date().getFullYear()}${(new Date().getMonth() + 1).toString().padStart(2, '0')}-${Math.floor(1000 + Math.random() * 9000)}`, // Simple unique enough number
+      invoiceNumber: `INV-${new Date().getFullYear()}${(new Date().getMonth() + 1).toString().padStart(2, '0')}-${Math.floor(1000 + Math.random() * 9000)}`, 
       invoiceDate: Timestamp.fromDate(data.invoiceDate),
       dueDate: Timestamp.fromDate(data.dueDate),
       periodCoveredStart: Timestamp.fromDate(data.periodCoveredStart),
@@ -137,7 +142,7 @@ export default function TenantManagementPage() {
       rentAmount: data.rentAmount,
       arrearsBroughtForward: data.arrearsBroughtForward || 0,
       totalDue: totalDue,
-      amountPaid: 0, // Initially unpaid
+      amountPaid: 0, 
       status: 'Draft',
       notes: data.notes || "",
       createdByUid: userProfile.uid,
@@ -148,15 +153,12 @@ export default function TenantManagementPage() {
     
     try {
       if (invoiceId) {
-        // Update existing invoice
         const invoiceDocRef = doc(db, "rentInvoices", invoiceId);
-        // Ensure fields like createdAt are not overwritten on update
         const { createdAt, createdByUid, createdByName, tenantId, tenantName, unitNumber, invoiceNumber, ...updateData} = invoiceData;
         updateData.updatedAt = serverTimestamp();
         await updateDoc(invoiceDocRef, updateData);
         toast({ title: "Invoice Updated", description: `Invoice ${invoiceData.invoiceNumber} has been updated.`});
       } else {
-        // Add new invoice
         await addDoc(collection(db, "rentInvoices"), invoiceData);
         toast({ title: "Invoice Created", description: `Invoice ${invoiceData.invoiceNumber} for ${tenantForInvoice.name} created.`});
       }
@@ -166,6 +168,65 @@ export default function TenantManagementPage() {
     } catch (error: any) {
       console.error("Error saving rent invoice:", error);
       toast({ title: "Invoice Save Failed", description: error.message, variant: "destructive"});
+    }
+  };
+
+  // Payment Handlers
+  const handleOpenRecordPaymentDialog = (invoice: RentInvoice) => {
+    if (!canManageTenants) {
+      toast({ title: "Access Denied", description: "You do not have permission to record payments.", variant: "destructive" });
+      return;
+    }
+    setInvoiceForPayment(invoice);
+    setIsRecordPaymentFormOpen(true);
+  };
+
+  const handleSaveInvoicePayment = async (paymentData: RecordInvoicePaymentFormValues, invoiceId: string) => {
+    if (!userProfile || !canManageTenants || !invoiceId) {
+      toast({ title: "Error", description: "Permission denied or invoice ID missing.", variant: "destructive" });
+      return;
+    }
+
+    const invoiceDocRef = doc(db, "rentInvoices", invoiceId);
+
+    try {
+      await runTransaction(db, async (transaction) => {
+        const invoiceSnap = await transaction.get(invoiceDocRef);
+        if (!invoiceSnap.exists()) {
+          throw new Error("Invoice not found.");
+        }
+        const currentInvoiceData = invoiceSnap.data() as RentInvoice;
+        const newAmountPaid = (currentInvoiceData.amountPaid || 0) + paymentData.amountPaid;
+        let newStatus = currentInvoiceData.status;
+
+        if (newAmountPaid >= currentInvoiceData.totalDue) {
+          newStatus = 'Paid';
+        } else if (newAmountPaid > 0 && newAmountPaid < currentInvoiceData.totalDue) {
+          // If partially paid, keep current status (e.g. Sent/Overdue) or introduce 'Partially Paid'
+          // For now, keep existing status unless fully paid.
+          newStatus = currentInvoiceData.status !== 'Draft' ? currentInvoiceData.status : 'Sent'; // If it was Draft, mark as Sent
+        }
+
+        transaction.update(invoiceDocRef, {
+          amountPaid: newAmountPaid,
+          datePaid: paymentData.datePaid ? Timestamp.fromDate(paymentData.datePaid) : serverTimestamp(),
+          paymentMethod: paymentData.paymentMethod,
+          status: newStatus,
+          notes: `${currentInvoiceData.notes || ''}\nPayment on ${format(paymentData.datePaid, 'PP')}: ${settings.currencySymbol}${paymentData.amountPaid.toLocaleString()}. Method: ${paymentData.paymentMethod}. Notes: ${paymentData.notes || 'N/A'}`.trim(),
+          updatedAt: serverTimestamp(),
+        });
+
+        // Note: Updating tenant's arrearsBroughtForward based on this payment is complex
+        // and ideally done server-side or with careful client-side logic.
+        // For now, we only update the invoice.
+      });
+
+      toast({ title: "Payment Recorded", description: `Payment for invoice successfully recorded.` });
+      setIsRecordPaymentFormOpen(false);
+      setInvoiceForPayment(null);
+    } catch (error: any) {
+      console.error("Error recording invoice payment:", error);
+      toast({ title: "Payment Record Failed", description: error.message, variant: "destructive" });
     }
   };
 
@@ -215,7 +276,7 @@ export default function TenantManagementPage() {
         </TabsContent>
         <TabsContent value="invoices">
            <div className="border shadow-sm rounded-lg p-2 mt-4">
-             <RentInvoiceList />
+             <RentInvoiceList onRecordPayment={handleOpenRecordPaymentDialog} />
           </div>
         </TabsContent>
       </Tabs>
@@ -239,6 +300,25 @@ export default function TenantManagementPage() {
                 setIsRentInvoiceFormOpen(false);
                 setTenantForInvoice(null);
                 setEditingInvoice(null);
+              }}
+            />
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Record Invoice Payment Form Dialog */}
+      {invoiceForPayment && (
+        <Dialog open={isRecordPaymentFormOpen} onOpenChange={(isOpen) => {
+          setIsRecordPaymentFormOpen(isOpen);
+          if(!isOpen) setInvoiceForPayment(null);
+        }}>
+          <DialogContent className="sm:max-w-md">
+            <RecordInvoicePaymentForm
+              invoice={invoiceForPayment}
+              onSave={handleSaveInvoicePayment}
+              onCancel={() => {
+                setIsRecordPaymentFormOpen(false);
+                setInvoiceForPayment(null);
               }}
             />
           </DialogContent>

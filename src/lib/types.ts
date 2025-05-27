@@ -45,8 +45,8 @@ export interface Contribution {
 export interface GlobalSettings {
   appName: string;
   logoUrl: string | null;
-  invoiceLogoUrl?: string | null; // Added
-  useAppLogoForInvoice?: boolean; // Added
+  invoiceLogoUrl?: string | null; 
+  useAppLogoForInvoice?: boolean; 
   contributionMin?: number;
   contributionMax?: number;
   penaltyAmount?: number;
@@ -222,6 +222,7 @@ export interface TenantFormValues {
 }
 
 export type InvoiceStatus = 'Draft' | 'Sent' | 'Paid' | 'Overdue' | 'Cancelled';
+export type InvoicePaymentMethod = 'Cash' | 'Bank Transfer' | 'Cheque' | 'Mobile Money' | 'Other';
 
 export interface RentInvoice {
   id?: string;
@@ -239,7 +240,7 @@ export interface RentInvoice {
   totalDue: number;
   amountPaid: number;
   datePaid?: any; 
-  paymentMethod?: string;
+  paymentMethod?: InvoicePaymentMethod;
   status: InvoiceStatus;
   notes?: string;
   createdByUid: string;
@@ -258,6 +259,14 @@ export interface RentInvoiceFormValues {
   arrearsBroughtForward?: number; 
   notes?: string;
 }
+
+export interface RecordInvoicePaymentFormValues {
+  amountPaid: number;
+  datePaid: Date;
+  paymentMethod: InvoicePaymentMethod;
+  notes?: string;
+}
+
 
 export type ProfessionalStatus = 'Active' | 'On Hold' | 'Completed' | 'Terminated';
 
