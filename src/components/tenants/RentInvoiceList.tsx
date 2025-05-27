@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react'; // Added useRef
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import type { RentInvoice, InvoiceStatus } from '@/lib/types';
@@ -13,9 +13,13 @@ import { format } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from "@/components/ui/button";
-import { MoreHorizontal, Edit2, Trash2, FileText, CheckCircle, AlertTriangle, Send, CircleSlash } from "lucide-react"; // Added icons for status
+import { MoreHorizontal, Edit2, Trash2, FileText, CheckCircle, AlertTriangle, Send, CircleSlash, Download } from "lucide-react"; // Added Download
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import InvoicePDFView from './InvoicePDFView'; // New import
+import html2canvas from 'html2canvas'; // New import
+import jsPDF from 'jspdf'; // New import
+import ReactDOM from 'react-dom'; // New import for temporary rendering
 
 // Define props if needed, e.g., for editing/deleting invoices later
 // interface RentInvoiceListProps {
@@ -30,6 +34,7 @@ export default function RentInvoiceList(/*{ onEditInvoice, onRecordPayment }: Re
   const { toast } = useToast();
   const [invoices, setInvoices] = useState<RentInvoice[]>([]);
   const [loading, setLoading] = useState(true);
+  const pdfRenderRef = useRef<HTMLDivElement | null>(null); // Ref for hidden PDF rendering
 
   const canManageInvoices = userProfile && userProfile.accessLevel <= 1;
 
@@ -41,13 +46,11 @@ export default function RentInvoiceList(/*{ onEditInvoice, onRecordPayment }: Re
     if (!userProfile || !canManageInvoices) {
       setLoading(false);
       setInvoices([]);
-      // No need to toast here, page access is handled by ProtectedRoute
       return;
     }
 
     setLoading(true);
     const invoicesRef = collection(db, "rentInvoices");
-    // Revert to the original query now that the index exists
     const q = query(invoicesRef, orderBy("invoiceDate", "desc"), orderBy("invoiceNumber", "desc"));
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
@@ -79,8 +82,76 @@ export default function RentInvoiceList(/*{ onEditInvoice, onRecordPayment }: Re
       setLoading(false);
     });
 
-    return () => unsubscribe();
+    // Create a hidden div for PDF rendering if it doesn't exist
+    if (!pdfRenderRef.current) {
+      const hiddenDiv = document.createElement('div');
+      hiddenDiv.style.position = 'absolute';
+      hiddenDiv.style.left = '-9999px';
+      hiddenDiv.style.top = '-9999px';
+      // Set a fixed width for consistent PDF rendering, e.g., A4 width in pixels at a certain DPI
+      // 210mm * ~3.78px/mm (for 96 DPI) = ~794px
+      hiddenDiv.style.width = '794px'; 
+      document.body.appendChild(hiddenDiv);
+      pdfRenderRef.current = hiddenDiv;
+    }
+    
+    return () => {
+      unsubscribe();
+      // Clean up the hidden div when the component unmounts
+      if (pdfRenderRef.current) {
+        document.body.removeChild(pdfRenderRef.current);
+        pdfRenderRef.current = null;
+      }
+    };
   }, [db, toast, userProfile, authLoading, canManageInvoices]);
+
+  const handleDownloadPDF = async (invoice: RentInvoice) => {
+    if (!pdfRenderRef.current || !invoice) return;
+
+    const pdfContainer = pdfRenderRef.current;
+    
+    // Temporarily render the InvoicePDFView in the hidden div
+    ReactDOM.render(<InvoicePDFView invoice={invoice} settings={settings} />, pdfContainer, async () => {
+      try {
+        const canvas = await html2canvas(pdfContainer.firstChild as HTMLElement, { 
+          scale: 2, // Increase scale for better quality
+          useCORS: true, // If images are from external sources
+          logging: false, // Disable logging for cleaner console
+         });
+        const imgData = canvas.toDataURL('image/png');
+        const pdf = new jsPDF('p', 'mm', 'a4'); // A4, portrait
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = pdf.internal.pageSize.getHeight();
+        
+        // Calculate aspect ratio
+        const imgProps= pdf.getImageProperties(imgData);
+        const imgWidth = imgProps.width;
+        const imgHeight = imgProps.height;
+        const ratio = imgHeight / imgWidth;
+        
+        let newImgWidth = pdfWidth - 20; // 10mm margin on each side
+        let newImgHeight = newImgWidth * ratio;
+
+        if (newImgHeight > pdfHeight - 20) { // If height exceeds page with margin
+            newImgHeight = pdfHeight - 20; // 10mm margin top/bottom
+            newImgWidth = newImgHeight / ratio;
+        }
+        
+        const x = (pdfWidth - newImgWidth) / 2; // Center image
+        const y = 10; // 10mm margin from top
+
+        pdf.addImage(imgData, 'PNG', x, y, newImgWidth, newImgHeight);
+        pdf.save(`Invoice_${invoice.invoiceNumber}_${invoice.tenantName.replace(/\s+/g, '_')}.pdf`);
+      } catch (error) {
+        console.error("Error generating PDF:", error);
+        toast({title: "PDF Generation Error", description: "Could not generate PDF.", variant: "destructive"});
+      } finally {
+        // Clean up the rendered component from the hidden div
+         ReactDOM.unmountComponentAtNode(pdfContainer);
+      }
+    });
+  };
+
 
   const getStatusBadgeInfo = (status: InvoiceStatus): { className: string; icon: React.ElementType, label: string } => {
     switch (status) {
@@ -160,7 +231,7 @@ export default function RentInvoiceList(/*{ onEditInvoice, onRecordPayment }: Re
               <TableHead className="text-right">Total Due ({settings.currencySymbol})</TableHead>
               <TableHead className="text-right">Amount Paid ({settings.currencySymbol})</TableHead>
               <TableHead>Status</TableHead>
-              {/* <TableHead>Actions</TableHead> */}
+              {canManageInvoices && <TableHead>Actions</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -186,7 +257,6 @@ export default function RentInvoiceList(/*{ onEditInvoice, onRecordPayment }: Re
                       {statusInfo.label}
                     </Badge>
                   </TableCell>
-                  {/* Placeholder for actions
                   {canManageInvoices && (
                     <TableCell>
                       <DropdownMenu>
@@ -198,17 +268,19 @@ export default function RentInvoiceList(/*{ onEditInvoice, onRecordPayment }: Re
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuLabel>Invoice Actions</DropdownMenuLabel>
-                          <DropdownMenuItem onClick={() => onEditInvoice?.(invoice)}>
+                           {/* <DropdownMenuItem onClick={() => onEditInvoice?.(invoice)}>
                             <Edit2 className="mr-2 h-4 w-4" /> Edit Invoice
                           </DropdownMenuItem>
                            <DropdownMenuItem onClick={() => onRecordPayment?.(invoice)}>
                             <CreditCard className="mr-2 h-4 w-4" /> Record Payment
+                          </DropdownMenuItem> */}
+                          <DropdownMenuItem onClick={() => handleDownloadPDF(invoice)}>
+                            <Download className="mr-2 h-4 w-4" /> Download PDF
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
                   )}
-                  */}
                 </TableRow>
               );
             })}
