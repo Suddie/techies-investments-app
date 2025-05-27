@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react'; // Added useRef
+import React, { useState, useEffect, useRef } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import type { RentInvoice, InvoiceStatus } from '@/lib/types';
@@ -13,28 +13,22 @@ import { format } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from "@/components/ui/button";
-import { MoreHorizontal, Edit2, Trash2, FileText, CheckCircle, AlertTriangle, Send, CircleSlash, Download } from "lucide-react"; // Added Download
+import { MoreHorizontal, Edit2, Trash2, FileText, CheckCircle, AlertTriangle, Send, CircleSlash, Download } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import InvoicePDFView from './InvoicePDFView'; // New import
-import html2canvas from 'html2canvas'; // New import
-import jsPDF from 'jspdf'; // New import
-import ReactDOM from 'react-dom'; // New import for temporary rendering
+import InvoicePDFView from './InvoicePDFView';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
+import { createRoot } from 'react-dom/client'; // Changed import
 
-// Define props if needed, e.g., for editing/deleting invoices later
-// interface RentInvoiceListProps {
-//   onEditInvoice?: (invoice: RentInvoice) => void;
-//   onRecordPayment?: (invoice: RentInvoice) => void;
-// }
-
-export default function RentInvoiceList(/*{ onEditInvoice, onRecordPayment }: RentInvoiceListProps*/) {
+export default function RentInvoiceList() {
   const { userProfile, loading: authLoading } = useAuth();
   const { settings } = useSettings();
   const { db } = useFirebase();
   const { toast } = useToast();
   const [invoices, setInvoices] = useState<RentInvoice[]>([]);
   const [loading, setLoading] = useState(true);
-  const pdfRenderRef = useRef<HTMLDivElement | null>(null); // Ref for hidden PDF rendering
+  const pdfRenderRef = useRef<HTMLDivElement | null>(null);
 
   const canManageInvoices = userProfile && userProfile.accessLevel <= 1;
 
@@ -82,14 +76,11 @@ export default function RentInvoiceList(/*{ onEditInvoice, onRecordPayment }: Re
       setLoading(false);
     });
 
-    // Create a hidden div for PDF rendering if it doesn't exist
     if (!pdfRenderRef.current) {
       const hiddenDiv = document.createElement('div');
       hiddenDiv.style.position = 'absolute';
       hiddenDiv.style.left = '-9999px';
       hiddenDiv.style.top = '-9999px';
-      // Set a fixed width for consistent PDF rendering, e.g., A4 width in pixels at a certain DPI
-      // 210mm * ~3.78px/mm (for 96 DPI) = ~794px
       hiddenDiv.style.width = '794px'; 
       document.body.appendChild(hiddenDiv);
       pdfRenderRef.current = hiddenDiv;
@@ -97,8 +88,7 @@ export default function RentInvoiceList(/*{ onEditInvoice, onRecordPayment }: Re
     
     return () => {
       unsubscribe();
-      // Clean up the hidden div when the component unmounts
-      if (pdfRenderRef.current) {
+      if (pdfRenderRef.current && pdfRenderRef.current.parentNode === document.body) {
         document.body.removeChild(pdfRenderRef.current);
         pdfRenderRef.current = null;
       }
@@ -109,47 +99,53 @@ export default function RentInvoiceList(/*{ onEditInvoice, onRecordPayment }: Re
     if (!pdfRenderRef.current || !invoice) return;
 
     const pdfContainer = pdfRenderRef.current;
+    const root = createRoot(pdfContainer); // Use createRoot
     
-    // Temporarily render the InvoicePDFView in the hidden div
-    ReactDOM.render(<InvoicePDFView invoice={invoice} settings={settings} />, pdfContainer, async () => {
+    root.render(<InvoicePDFView invoice={invoice} settings={settings} />);
+
+    // Give React a moment to render before capturing with html2canvas
+    setTimeout(async () => {
       try {
-        const canvas = await html2canvas(pdfContainer.firstChild as HTMLElement, { 
-          scale: 2, // Increase scale for better quality
-          useCORS: true, // If images are from external sources
-          logging: false, // Disable logging for cleaner console
-         });
-        const imgData = canvas.toDataURL('image/png');
-        const pdf = new jsPDF('p', 'mm', 'a4'); // A4, portrait
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const pdfHeight = pdf.internal.pageSize.getHeight();
-        
-        // Calculate aspect ratio
-        const imgProps= pdf.getImageProperties(imgData);
-        const imgWidth = imgProps.width;
-        const imgHeight = imgProps.height;
-        const ratio = imgHeight / imgWidth;
-        
-        let newImgWidth = pdfWidth - 20; // 10mm margin on each side
-        let newImgHeight = newImgWidth * ratio;
+        if (pdfContainer.firstChild) { // Ensure there's content
+            const canvas = await html2canvas(pdfContainer.firstChild as HTMLElement, { 
+            scale: 2, 
+            useCORS: true,
+            logging: false,
+           });
+          const imgData = canvas.toDataURL('image/png');
+          const pdf = new jsPDF('p', 'mm', 'a4');
+          const pdfWidth = pdf.internal.pageSize.getWidth();
+          const pdfHeight = pdf.internal.pageSize.getHeight();
+          
+          const imgProps= pdf.getImageProperties(imgData);
+          const imgWidth = imgProps.width;
+          const imgHeight = imgProps.height;
+          const ratio = imgHeight / imgWidth;
+          
+          let newImgWidth = pdfWidth - 20; 
+          let newImgHeight = newImgWidth * ratio;
 
-        if (newImgHeight > pdfHeight - 20) { // If height exceeds page with margin
-            newImgHeight = pdfHeight - 20; // 10mm margin top/bottom
-            newImgWidth = newImgHeight / ratio;
+          if (newImgHeight > pdfHeight - 20) { 
+              newImgHeight = pdfHeight - 20; 
+              newImgWidth = newImgHeight / ratio;
+          }
+          
+          const x = (pdfWidth - newImgWidth) / 2; 
+          const y = 10; 
+
+          pdf.addImage(imgData, 'PNG', x, y, newImgWidth, newImgHeight);
+          pdf.save(`Invoice_${invoice.invoiceNumber}_${invoice.tenantName.replace(/\s+/g, '_')}.pdf`);
+        } else {
+            console.error("PDF Render container is empty after React render attempt.");
+            toast({title: "PDF Generation Error", description: "Could not render content for PDF.", variant: "destructive"});
         }
-        
-        const x = (pdfWidth - newImgWidth) / 2; // Center image
-        const y = 10; // 10mm margin from top
-
-        pdf.addImage(imgData, 'PNG', x, y, newImgWidth, newImgHeight);
-        pdf.save(`Invoice_${invoice.invoiceNumber}_${invoice.tenantName.replace(/\s+/g, '_')}.pdf`);
       } catch (error) {
         console.error("Error generating PDF:", error);
         toast({title: "PDF Generation Error", description: "Could not generate PDF.", variant: "destructive"});
       } finally {
-        // Clean up the rendered component from the hidden div
-         ReactDOM.unmountComponentAtNode(pdfContainer);
+        root.unmount(); // Unmount after processing
       }
-    });
+    }, 100); // A short delay to help ensure rendering completes. Adjust if necessary.
   };
 
 
@@ -268,12 +264,6 @@ export default function RentInvoiceList(/*{ onEditInvoice, onRecordPayment }: Re
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuLabel>Invoice Actions</DropdownMenuLabel>
-                           {/* <DropdownMenuItem onClick={() => onEditInvoice?.(invoice)}>
-                            <Edit2 className="mr-2 h-4 w-4" /> Edit Invoice
-                          </DropdownMenuItem>
-                           <DropdownMenuItem onClick={() => onRecordPayment?.(invoice)}>
-                            <CreditCard className="mr-2 h-4 w-4" /> Record Payment
-                          </DropdownMenuItem> */}
                           <DropdownMenuItem onClick={() => handleDownloadPDF(invoice)}>
                             <Download className="mr-2 h-4 w-4" /> Download PDF
                           </DropdownMenuItem>
@@ -290,3 +280,4 @@ export default function RentInvoiceList(/*{ onEditInvoice, onRecordPayment }: Re
     </Card>
   );
 }
+
