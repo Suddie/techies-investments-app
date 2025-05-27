@@ -28,29 +28,33 @@ export default function ReportView({ reportData }: ReportViewProps) {
 
   if (!reportData) return <p>No report data to display.</p>;
 
+  const displayLogoUrl = globalSettings.useAppLogoForInvoice === false && globalSettings.invoiceLogoUrl
+    ? globalSettings.invoiceLogoUrl
+    : globalSettings.logoUrl;
+
   return (
     <div className="p-4 text-black bg-white"> {/* Ensure text is black for PDF/JPG export */}
       <header className="mb-6 text-center">
-        {globalSettings.logoUrl && !settingsLoading && (
+        {!settingsLoading && displayLogoUrl && (
             <Image 
-                src={globalSettings.logoUrl} 
+                src={displayLogoUrl} 
                 alt={`${globalSettings.appName} Logo`} 
                 width={80} 
                 height={80} 
                 className="mx-auto mb-2 object-contain"
-                data-ai-hint="logo company"
+                data-ai-hint="logo company document"
             />
         )}
-        <h1 className="text-2xl font-bold">{globalSettings.appName}</h1>
+        <h1 className="text-2xl font-bold">{globalSettings.invoiceCompanyName || globalSettings.appName}</h1>
         <h2 className="text-xl font-semibold">{reportData.title}</h2>
         <p className="text-sm text-gray-600">For the period: {reportData.dateRange}</p>
+        {globalSettings.companyTaxPIN && <p className="text-xs text-gray-500 mt-1">Tax PIN: {globalSettings.companyTaxPIN}</p>}
       </header>
 
       {reportData.data.length === 0 ? (
         <p className="text-center text-gray-500 my-8">No data available for this report and period.</p>
       ) : (
         <Table>
-          {/* <TableCaption>A list of financial transactions for the selected period.</TableCaption> */}
           <TableHeader>
             <TableRow>
               {reportData.columns.map((col) => (
@@ -64,7 +68,7 @@ export default function ReportView({ reportData }: ReportViewProps) {
                 {reportData.columns.map((col) => (
                   <TableCell key={`${rowIndex}-${col.accessorKey}`}>
                     {typeof row[col.accessorKey] === 'number' && col.accessorKey.toLowerCase().includes('amount') 
-                      ? `${reportData.currencySymbol} ${row[col.accessorKey].toLocaleString()}` 
+                      ? `${reportData.currencySymbol} ${row[col.accessorKey].toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` 
                       : row[col.accessorKey]}
                   </TableCell>
                 ))}
@@ -82,7 +86,7 @@ export default function ReportView({ reportData }: ReportViewProps) {
               <span>{item.label}:</span>
               <span className="font-medium">
                 {typeof item.value === 'number' 
-                  ? `${reportData.currencySymbol} ${item.value.toLocaleString()}` 
+                  ? `${reportData.currencySymbol} ${item.value.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` 
                   : item.value}
               </span>
             </div>
@@ -92,7 +96,11 @@ export default function ReportView({ reportData }: ReportViewProps) {
 
       <footer className="mt-8 pt-4 border-t text-center text-xs text-gray-500">
         <p>Generated on: {new Date().toLocaleDateString()}</p>
-        <p>{globalSettings.appName} - {globalSettings.invoiceAddress || "Investment Group"}</p>
+        <p>
+          {globalSettings.invoiceCompanyName || globalSettings.appName} - 
+          {globalSettings.invoiceAddress || "Investment Group"} - 
+          {globalSettings.invoiceContact}
+        </p>
         <p className="mt-2 italic">This is an automatically generated report. Please verify all figures.</p>
       </footer>
     </div>

@@ -34,10 +34,10 @@ export interface Contribution {
   userId: string;
   memberName: string | null; 
   amount: number;
-  penaltyPaidAmount?: number; // Added for amount paid towards penalties
+  penaltyPaidAmount?: number; 
   monthsCovered: string[]; 
   datePaid: any; 
-  isLate?: boolean; // This would ideally be set by a Cloud Function
+  isLate?: boolean; 
   notes?: string;
   createdAt?: any; 
 }
@@ -45,8 +45,8 @@ export interface Contribution {
 export interface GlobalSettings {
   appName: string;
   logoUrl: string | null;
-  invoiceLogoUrl?: string | null;
-  useAppLogoForInvoice?: boolean;
+  invoiceLogoUrl?: string | null; // Added
+  useAppLogoForInvoice?: boolean; // Added
   contributionMin?: number;
   contributionMax?: number;
   penaltyAmount?: number;
@@ -300,3 +300,12 @@ export interface ProfessionalPaymentFormValues {
   notes?: string;
 }
 
+// Company Info type (for companyInfo collection, usually a single document)
+// export interface CompanyInfo {
+//   id?: string; // Typically a fixed ID like 'main'
+//   companyName: string;
+//   address?: string;
+//   registrationNumber?: string;
+//   taxPIN?: string; // This is separate from member TPINs
+//   // other relevant details
+// }

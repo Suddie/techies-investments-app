@@ -15,7 +15,7 @@ import {
   FormDescription,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea"; // Added Textarea
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import PageHeader from "@/components/common/PageHeader";
@@ -29,6 +29,7 @@ import ProtectedRoute from "@/components/common/ProtectedRoute";
 import Image from "next/image";
 import { UploadCloud, XCircle } from "lucide-react";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch"; // Added Switch import
 
 const generalSettingsSchema = z.object({
   appName: z.string().min(3, "App name must be at least 3 characters.").max(50, "App name must be at most 50 characters."),
@@ -37,6 +38,7 @@ const generalSettingsSchema = z.object({
   invoiceAddress: z.string().min(5, "Address is required.").max(200, "Address is too long.").optional().or(z.literal('')),
   invoiceContact: z.string().min(5, "Contact info is required.").max(100, "Contact info is too long.").optional().or(z.literal('')),
   companyTaxPIN: z.string().min(5, "Tax PIN is required.").max(30, "Tax PIN is too long.").optional().or(z.literal('')),
+  useAppLogoForInvoice: z.boolean().optional(), // Added
 });
 
 type GeneralSettingsFormValues = z.infer<typeof generalSettingsSchema>;
@@ -56,10 +58,17 @@ export default function AdminSettingsPage() {
   const { toast } = useToast();
   const [isSavingGeneral, setIsSavingGeneral] = useState(false);
   const [isSavingFinancial, setIsSavingFinancial] = useState(false);
-  const [selectedLogoFile, setSelectedLogoFile] = useState<File | null>(null);
-  const [logoPreview, setLogoPreview] = useState<string | null>(settings.logoUrl);
-  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [selectedAppLogoFile, setSelectedAppLogoFile] = useState<File | null>(null);
+  const [appLogoPreview, setAppLogoPreview] = useState<string | null>(settings.logoUrl);
+  const [isUploadingAppLogo, setIsUploadingAppLogo] = useState(false);
+  const appLogoFileInputRef = useRef<HTMLInputElement>(null);
+
+  const [selectedInvoiceLogoFile, setSelectedInvoiceLogoFile] = useState<File | null>(null);
+  const [invoiceLogoPreview, setInvoiceLogoPreview] = useState<string | null>(settings.invoiceLogoUrl);
+  const [isUploadingInvoiceLogo, setIsUploadingInvoiceLogo] = useState(false);
+  const invoiceLogoFileInputRef = useRef<HTMLInputElement>(null);
+
 
   const generalForm = useForm<GeneralSettingsFormValues>({
     resolver: zodResolver(generalSettingsSchema),
@@ -70,6 +79,7 @@ export default function AdminSettingsPage() {
       invoiceAddress: settings.invoiceAddress || "",
       invoiceContact: settings.invoiceContact || "",
       companyTaxPIN: settings.companyTaxPIN || "",
+      useAppLogoForInvoice: settings.useAppLogoForInvoice || false,
     },
   });
 
@@ -91,13 +101,15 @@ export default function AdminSettingsPage() {
         invoiceAddress: settings.invoiceAddress || "",
         invoiceContact: settings.invoiceContact || "",
         companyTaxPIN: settings.companyTaxPIN || "",
+        useAppLogoForInvoice: settings.useAppLogoForInvoice || false,
       });
       financialForm.reset({
         contributionMin: settings.contributionMin,
         contributionMax: settings.contributionMax,
         penaltyAmount: settings.penaltyAmount,
       });
-      setLogoPreview(settings.logoUrl);
+      setAppLogoPreview(settings.logoUrl);
+      setInvoiceLogoPreview(settings.invoiceLogoUrl);
     }
   }, [settings, settingsLoading, generalForm, financialForm]);
 
@@ -112,6 +124,7 @@ export default function AdminSettingsPage() {
         invoiceAddress: values.invoiceAddress,
         invoiceContact: values.invoiceContact,
         companyTaxPIN: values.companyTaxPIN,
+        useAppLogoForInvoice: values.useAppLogoForInvoice,
       });
       toast({
         title: "Settings Updated",
@@ -154,64 +167,85 @@ export default function AdminSettingsPage() {
     }
   };
 
-  const handleLogoFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoFileChange = (event: React.ChangeEvent<HTMLInputElement>, type: 'app' | 'invoice') => {
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0];
-      setSelectedLogoFile(file);
-      setLogoPreview(URL.createObjectURL(file));
+      if (type === 'app') {
+        setSelectedAppLogoFile(file);
+        setAppLogoPreview(URL.createObjectURL(file));
+      } else {
+        setSelectedInvoiceLogoFile(file);
+        setInvoiceLogoPreview(URL.createObjectURL(file));
+      }
     }
   };
 
-  const handleUploadLogo = async () => {
-    if (!selectedLogoFile) {
-      toast({ title: "No logo selected", description: "Please select a logo file to upload.", variant: "destructive" });
+  const handleUploadLogo = async (type: 'app' | 'invoice') => {
+    const selectedFile = type === 'app' ? selectedAppLogoFile : selectedInvoiceLogoFile;
+    const settingKey = type === 'app' ? 'logoUrl' : 'invoiceLogoUrl';
+    const setIsUploading = type === 'app' ? setIsUploadingAppLogo : setIsUploadingInvoiceLogo;
+    const setPreview = type === 'app' ? setAppLogoPreview : setInvoiceLogoPreview;
+    const setSelectedFile = type === 'app' ? setSelectedAppLogoFile : setSelectedInvoiceLogoFile;
+    const fileInputRef = type === 'app' ? appLogoFileInputRef : invoiceLogoFileInputRef;
+    const toastTitle = type === 'app' ? 'App Logo' : 'Invoice Logo';
+
+    if (!selectedFile) {
+      toast({ title: `No ${type} logo selected`, description: `Please select a logo file to upload.`, variant: "destructive" });
       return;
     }
-    setIsUploadingLogo(true);
+    setIsUploading(true);
     try {
-      const logoFileName = `app_logo_${Date.now()}_${selectedLogoFile.name}`;
+      const logoFileName = `${type}_logo_${Date.now()}_${selectedFile.name}`;
       const logoStorageRef = ref(storage, `settings/${logoFileName}`);
-      await uploadBytes(logoStorageRef, selectedLogoFile);
+      await uploadBytes(logoStorageRef, selectedFile);
       const downloadURL = await getDownloadURL(logoStorageRef);
 
       const settingsDocRef = doc(db, "settings", "global_settings");
-      await updateDoc(settingsDocRef, { logoUrl: downloadURL });
+      await updateDoc(settingsDocRef, { [settingKey]: downloadURL });
 
-      setLogoPreview(downloadURL);
-      setSelectedLogoFile(null);
+      setPreview(downloadURL);
+      setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
 
-      toast({ title: "Logo Uploaded", description: "Application logo has been updated." });
+      toast({ title: `${toastTitle} Uploaded`, description: `${toastTitle} has been updated.` });
     } catch (error: any) {
-      console.error("Error uploading logo:", error);
-      toast({ title: "Logo Upload Error", description: error.message, variant: "destructive" });
+      console.error(`Error uploading ${type} logo:`, error);
+      toast({ title: `${toastTitle} Upload Error`, description: error.message, variant: "destructive" });
     } finally {
-      setIsUploadingLogo(false);
+      setIsUploading(false);
     }
   };
 
-  const handleRemoveLogo = async () => {
-    setIsUploadingLogo(true);
+  const handleRemoveLogo = async (type: 'app' | 'invoice') => {
+    const currentLogoUrl = type === 'app' ? settings.logoUrl : settings.invoiceLogoUrl;
+    const settingKey = type === 'app' ? 'logoUrl' : 'invoiceLogoUrl';
+    const setIsUploading = type === 'app' ? setIsUploadingAppLogo : setIsUploadingInvoiceLogo;
+    const setPreview = type === 'app' ? setAppLogoPreview : setInvoiceLogoPreview;
+    const setSelectedFile = type === 'app' ? setSelectedAppLogoFile : setSelectedInvoiceLogoFile;
+    const fileInputRef = type === 'app' ? appLogoFileInputRef : invoiceLogoFileInputRef;
+    const toastTitle = type === 'app' ? 'App Logo' : 'Invoice Logo';
+
+    setIsUploading(true);
     try {
-      if (settings.logoUrl) {
+      if (currentLogoUrl) {
         try {
-          const oldLogoRef = ref(storage, settings.logoUrl);
+          const oldLogoRef = ref(storage, currentLogoUrl);
           await deleteObject(oldLogoRef);
         } catch (storageError: any) {
-          console.warn("Could not delete old logo from storage:", storageError.message);
+          console.warn(`Could not delete old ${type} logo from storage:`, storageError.message);
         }
       }
       const settingsDocRef = doc(db, "settings", "global_settings");
-      await updateDoc(settingsDocRef, { logoUrl: null });
-      setLogoPreview(null);
-      setSelectedLogoFile(null);
+      await updateDoc(settingsDocRef, { [settingKey]: null });
+      setPreview(null);
+      setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
-      toast({ title: "Logo Removed", description: "Application logo has been removed." });
+      toast({ title: `${toastTitle} Removed`, description: `${toastTitle} has been removed.` });
     } catch (error: any) {
-      console.error("Error removing logo:", error);
-      toast({ title: "Error Removing Logo", description: error.message, variant: "destructive" });
+      console.error(`Error removing ${type} logo:`, error);
+      toast({ title: `Error Removing ${toastTitle}`, description: error.message, variant: "destructive" });
     } finally {
-      setIsUploadingLogo(false);
+      setIsUploading(false);
     }
   };
 
@@ -224,7 +258,7 @@ export default function AdminSettingsPage() {
       />
       <Tabs defaultValue="general" className="w-full">
         <TabsList className="grid w-full grid-cols-2 md:w-[400px] mb-6">
-          <TabsTrigger value="general">General</TabsTrigger>
+          <TabsTrigger value="general">General & Branding</TabsTrigger>
           <TabsTrigger value="financial">Financial</TabsTrigger>
         </TabsList>
 
@@ -325,6 +359,26 @@ export default function AdminSettingsPage() {
                           </FormItem>
                         )}
                       />
+                      <FormField
+                        control={generalForm.control}
+                        name="useAppLogoForInvoice"
+                        render={({ field }) => (
+                          <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
+                            <div className="space-y-0.5">
+                              <FormLabel className="text-base">Use App Logo for Invoices</FormLabel>
+                              <FormDescription>
+                                If enabled, the main app logo will be used on invoices. Otherwise, the specific invoice logo (if uploaded) will be used.
+                              </FormDescription>
+                            </div>
+                            <FormControl>
+                              <Switch
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
                       <Button type="submit" disabled={isSavingGeneral || settingsLoading}>
                         {isSavingGeneral ? "Saving..." : "Save Details"}
                       </Button>
@@ -336,45 +390,88 @@ export default function AdminSettingsPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle>Application Logo</CardTitle>
-                <CardDescription>Upload or remove the application logo.</CardDescription>
+                <CardTitle>Branding & Logos</CardTitle>
+                <CardDescription>Manage application and invoice logos.</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-6">
                 {settingsLoading ? (
-                  <p>Loading logo...</p>
+                  <p>Loading logo settings...</p>
                 ) : (
                   <>
-                    <Label>Current Logo</Label>
-                    <div className="flex items-center justify-center w-full h-32 rounded-md border border-dashed bg-muted/50 mb-4">
-                      {logoPreview ? (
-                        <Image src={logoPreview} alt="Current App Logo" width={100} height={100} className="object-contain h-28 w-28" data-ai-hint="logo company"/>
-                      ) : (
-                        <p className="text-muted-foreground">No logo uploaded</p>
-                      )}
-                    </div>
-                    <div className="space-y-1">
-                      <Label htmlFor="logo-upload">Upload New Logo</Label>
-                      <Input
-                        id="logo-upload"
-                        type="file"
-                        accept="image/png, image/jpeg, image/svg+xml, image/gif"
-                        onChange={handleLogoFileChange}
-                        ref={fileInputRef}
-                        className="text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
-                      />
-                      <p className="text-sm text-muted-foreground">Recommended: Square logo, PNG or SVG.</p>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button onClick={handleUploadLogo} disabled={isUploadingLogo || !selectedLogoFile} className="flex-1">
-                        <UploadCloud className="mr-2 h-4 w-4" />
-                        {isUploadingLogo ? "Uploading..." : "Upload Logo"}
-                      </Button>
-                      {settings.logoUrl && (
-                        <Button variant="destructive" onClick={handleRemoveLogo} disabled={isUploadingLogo} className="flex-1">
-                           <XCircle className="mr-2 h-4 w-4" />
-                          Remove Logo
+                    {/* App Logo Section */}
+                    <div>
+                      <Label className="text-lg font-semibold">Application Logo</Label>
+                      <div className="flex items-center justify-center w-full h-32 rounded-md border border-dashed bg-muted/50 mt-2 mb-4">
+                        {appLogoPreview ? (
+                          <Image src={appLogoPreview} alt="Current App Logo" width={100} height={100} className="object-contain h-28 w-28" data-ai-hint="logo company"/>
+                        ) : (
+                          <p className="text-muted-foreground">No app logo uploaded</p>
+                        )}
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="app-logo-upload">Upload New App Logo</Label>
+                        <Input
+                          id="app-logo-upload"
+                          type="file"
+                          accept="image/png, image/jpeg, image/svg+xml, image/gif"
+                          onChange={(e) => handleLogoFileChange(e, 'app')}
+                          ref={appLogoFileInputRef}
+                          className="text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
+                        />
+                        <p className="text-sm text-muted-foreground">Recommended: Square logo, PNG or SVG.</p>
+                      </div>
+                      <div className="flex gap-2 mt-2">
+                        <Button onClick={() => handleUploadLogo('app')} disabled={isUploadingAppLogo || !selectedAppLogoFile} className="flex-1">
+                          <UploadCloud className="mr-2 h-4 w-4" />
+                          {isUploadingAppLogo ? "Uploading..." : "Upload App Logo"}
                         </Button>
-                      )}
+                        {settings.logoUrl && (
+                          <Button variant="destructive" onClick={() => handleRemoveLogo('app')} disabled={isUploadingAppLogo} className="flex-1">
+                            <XCircle className="mr-2 h-4 w-4" />
+                            Remove App Logo
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+
+                    <hr className="my-6" />
+
+                    {/* Invoice Logo Section */}
+                    <div>
+                      <Label className="text-lg font-semibold">Invoice Logo</Label>
+                      <p className="text-sm text-muted-foreground mb-2">
+                        This logo will be used on invoices if "Use App Logo for Invoices" is disabled.
+                      </p>
+                      <div className="flex items-center justify-center w-full h-32 rounded-md border border-dashed bg-muted/50 mt-2 mb-4">
+                        {invoiceLogoPreview ? (
+                          <Image src={invoiceLogoPreview} alt="Current Invoice Logo" width={100} height={100} className="object-contain h-28 w-28" data-ai-hint="logo company document"/>
+                        ) : (
+                          <p className="text-muted-foreground">No invoice logo uploaded</p>
+                        )}
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="invoice-logo-upload">Upload New Invoice Logo</Label>
+                        <Input
+                          id="invoice-logo-upload"
+                          type="file"
+                          accept="image/png, image/jpeg, image/svg+xml, image/gif"
+                          onChange={(e) => handleLogoFileChange(e, 'invoice')}
+                          ref={invoiceLogoFileInputRef}
+                          className="text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
+                        />
+                      </div>
+                      <div className="flex gap-2 mt-2">
+                        <Button onClick={() => handleUploadLogo('invoice')} disabled={isUploadingInvoiceLogo || !selectedInvoiceLogoFile} className="flex-1">
+                          <UploadCloud className="mr-2 h-4 w-4" />
+                          {isUploadingInvoiceLogo ? "Uploading..." : "Upload Invoice Logo"}
+                        </Button>
+                        {settings.invoiceLogoUrl && (
+                          <Button variant="destructive" onClick={() => handleRemoveLogo('invoice')} disabled={isUploadingInvoiceLogo} className="flex-1">
+                            <XCircle className="mr-2 h-4 w-4" />
+                            Remove Invoice Logo
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   </>
                 )}
