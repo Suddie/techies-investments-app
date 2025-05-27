@@ -15,14 +15,17 @@ import { useState } from "react";
 import type { Tenant, RentInvoice } from "@/lib/types"; 
 import { useAuth } from "@/contexts/AuthProvider";
 import { useFirebase } from "@/contexts/FirebaseProvider";
+import { useSettings } from "@/contexts/SettingsProvider"; // Added import
 import { useToast } from "@/hooks/use-toast";
 import { collection, addDoc, serverTimestamp, doc, updateDoc, Timestamp, runTransaction } from "firebase/firestore";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"; 
+import { format } from "date-fns"; // Added import
 
 export default function TenantManagementPage() {
   const { userProfile } = useAuth();
   const { db } = useFirebase();
   const { toast } = useToast();
+  const { settings } = useSettings(); // Get settings
 
   // State for Tenant Form
   const [isTenantFormOpen, setIsTenantFormOpen] = useState(false);
