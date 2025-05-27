@@ -12,6 +12,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+  FormDescription,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -32,8 +33,8 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 const generateMonthOptions = () => {
   const options: { value: string; label: string }[] = [];
   const today = new Date();
-  const startDate = subMonths(new Date(getYear(today), getMonth(today), 1), 12); // 12 months ago
-  const endDate = addMonths(new Date(getYear(today), getMonth(today), 1), 12); // 12 months ahead
+  const startDate = subMonths(new Date(getYear(today), getMonth(today), 1), 12); 
+  const endDate = addMonths(new Date(getYear(today), getMonth(today), 1), 12); 
 
   let currentDate = startDate;
   while (currentDate <= endDate) {
@@ -43,7 +44,7 @@ const generateMonthOptions = () => {
     });
     currentDate = addMonths(currentDate, 1);
   }
-  return options.sort((a, b) => a.value.localeCompare(b.value)); // Sort chronologically
+  return options.sort((a, b) => a.value.localeCompare(b.value)); 
 };
 
 
@@ -61,25 +62,24 @@ export default function ContributionForm() {
       .min(settings.contributionMin || 1, `Minimum contribution is ${settings.currencySymbol}${settings.contributionMin || 1}`)
       .max(settings.contributionMax || Infinity, `Maximum contribution is ${settings.currencySymbol}${settings.contributionMax || 'Unlimited'}`),
     monthsCovered: z.array(z.string()).min(1, "Please select at least one month."),
+    penaltyPaidAmount: z.coerce.number().min(0, "Penalty payment cannot be negative.").optional(),
     notes: z.string().max(500, "Notes are too long.").optional(),
   });
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
-    defaultValues: { // Ensure initial defined values
-      amount: 0, 
+    defaultValues: {
+      amount: settings.contributionMin || 0, 
       monthsCovered: [],
+      penaltyPaidAmount: 0,
       notes: "",
     },
   });
   
   useEffect(() => {
-    // When settings.contributionMin is loaded or changes,
-    // update the 'amount' field in the form.
     if (settings.contributionMin !== undefined) {
       form.setValue("amount", settings.contributionMin || 0, {
         shouldValidate: true,
-        // shouldDirty: true, // Optionally set dirty state if value changes
       });
     }
   }, [settings.contributionMin, form.setValue]);
@@ -95,29 +95,38 @@ export default function ContributionForm() {
         return;
     }
 
+    if (values.penaltyPaidAmount && values.penaltyPaidAmount > (userProfile.penaltyBalance || 0)) {
+        form.setError("penaltyPaidAmount", { message: `Cannot pay more than outstanding penalty of ${settings.currencySymbol}${(userProfile.penaltyBalance || 0).toLocaleString()}.`})
+        return;
+    }
+
     setLoading(true);
     try {
       const contributionData = {
         userId: userProfile.uid,
         memberName: userProfile.name,
         amount: values.amount,
-        monthsCovered: values.monthsCovered.sort(), // Ensure months are sorted
+        penaltyPaidAmount: values.penaltyPaidAmount || 0,
+        monthsCovered: values.monthsCovered.sort(), 
         datePaid: serverTimestamp(), 
-        isLate: false, // Placeholder: actual logic would be server-side or more complex client-side
+        isLate: false, 
         notes: values.notes || "",
         createdAt: serverTimestamp(),
       };
       
       await addDoc(collection(db, "contributions"), contributionData);
 
+      // TODO: In a real app, update userProfile.penaltyBalance in Firestore (ideally via Cloud Function)
+      // For now, we just show a success message.
+
       toast({
         title: "Contribution Submitted Successfully!",
-        description: `Your contribution of ${settings.currencySymbol}${values.amount} for ${values.monthsCovered.join(', ')} has been recorded.`,
+        description: `Your contribution of ${settings.currencySymbol}${values.amount} ${values.penaltyPaidAmount ? `(and ${settings.currencySymbol}${values.penaltyPaidAmount} for penalties) ` : ''}for ${values.monthsCovered.join(', ')} has been recorded.`,
       });
-      // Reset form to initial default values, which will now also consider current settings.contributionMin
       form.reset({ 
         amount: settings.contributionMin || 0, 
         monthsCovered: [], 
+        penaltyPaidAmount: 0,
         notes: "" 
       });
     } catch (error: any) {
@@ -146,7 +155,7 @@ export default function ContributionForm() {
               name="amount"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Amount ({settings.currencySymbol})</FormLabel>
+                  <FormLabel>Contribution Amount ({settings.currencySymbol})</FormLabel>
                   <FormControl>
                     <Input type="number" placeholder={`e.g. ${settings.contributionMin || 1000}`} {...field} />
                   </FormControl>
@@ -168,7 +177,7 @@ export default function ContributionForm() {
                           variant="outline"
                           role="combobox"
                           className={cn(
-                            "w-full justify-between min-h-[2.5rem]", // Ensure consistent height with Input
+                            "w-full justify-between min-h-[2.5rem]", 
                             !field.value?.length && "text-muted-foreground"
                           )}
                         >
@@ -188,13 +197,13 @@ export default function ContributionForm() {
                             {monthOptions.map((option) => (
                                 <CommandItem
                                   key={option.value}
-                                  value={option.label} // value here is for search, not the form value
+                                  value={option.label} 
                                   onSelect={() => {
                                       const currentValue = field.value || [];
                                       const newValue = currentValue.includes(option.value)
                                       ? currentValue.filter((v) => v !== option.value)
                                       : [...currentValue, option.value];
-                                      field.onChange(newValue.sort()); // Keep selected values sorted
+                                      field.onChange(newValue.sort()); 
                                   }}
                                 >
                                 <Check
@@ -217,6 +226,25 @@ export default function ContributionForm() {
                 </FormItem>
               )}
             />
+
+            {userProfile && (userProfile.penaltyBalance || 0) > 0 && (
+              <FormField
+                control={form.control}
+                name="penaltyPaidAmount"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Amount Towards Penalties ({settings.currencySymbol}) (Optional)</FormLabel>
+                    <FormControl>
+                      <Input type="number" placeholder="e.g. 500" {...field} />
+                    </FormControl>
+                    <FormDescription>
+                      You have an outstanding penalty balance of {settings.currencySymbol}{(userProfile.penaltyBalance || 0).toLocaleString()}.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
             
             <FormField
               control={form.control}

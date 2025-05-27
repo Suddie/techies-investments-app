@@ -7,7 +7,7 @@ export interface UserProfile {
   accessLevel: AccessLevel;
   shares?: number;
   penaltyBalance?: number; 
-  tpin?: string; // Added TPIN field
+  tpin?: string; 
   requiresPasswordChange?: boolean;
   status?: 'Active' | 'Inactive';
   photoURL?: string | null;
@@ -25,7 +25,7 @@ export interface UserFormValues {
   password?: string; 
   status: 'Active' | 'Inactive';
   requiresPasswordChange: boolean;
-  tpin?: string; // Added TPIN field
+  tpin?: string; 
 }
 
 
@@ -34,10 +34,10 @@ export interface Contribution {
   userId: string;
   memberName: string | null; 
   amount: number;
-  penaltyPaidAmount?: number;
+  penaltyPaidAmount?: number; // Added for amount paid towards penalties
   monthsCovered: string[]; 
   datePaid: any; 
-  isLate?: boolean;
+  isLate?: boolean; // This would ideally be set by a Cloud Function
   notes?: string;
   createdAt?: any; 
 }
@@ -54,7 +54,7 @@ export interface GlobalSettings {
   invoiceCompanyName?: string;
   invoiceAddress?: string;
   invoiceContact?: string;
-  companyTaxPIN?: string; // Added for company tax ID
+  companyTaxPIN?: string; 
   financialYearStart?: string; 
 }
 
@@ -156,27 +156,27 @@ export interface StockTransactionFormValues {
 
 export interface AuditLogEntry {
   id?: string;
-  timestamp: any; // Firestore Timestamp
+  timestamp: any; 
   userId: string;
   userName: string;
-  actionType: string; // e.g., "USER_LOGIN", "EXPENSE_CREATED", "SETTINGS_UPDATED"
-  details: string | Record<string, any>; // Can be a simple string or a structured object
+  actionType: string; 
+  details: string | Record<string, any>; 
 }
 
 export interface BankBalance {
   id?: string;
-  monthYear: string; // Format 'YYYY-MM'
+  monthYear: string; 
   openingBalance: number;
   closingBalance: number;
   interestEarned?: number;
   bankCharges?: number;
-  lastUpdated?: any; // Firestore Timestamp
+  lastUpdated?: any; 
   recordedByUid?: string;
   recordedByName?: string;
 }
 
 export interface BankBalanceFormValues {
-  monthYear: string; // Format 'YYYY-MM'
+  monthYear: string; 
   openingBalance: number;
   closingBalance: number;
   interestEarned?: number;
@@ -197,10 +197,10 @@ export interface Tenant {
   };
   rentAmount: number;
   paymentFrequency: PaymentFrequency;
-  leaseStartDate?: any; // Firestore Timestamp or Date
-  leaseEndDate?: any; // Firestore Timestamp or Date
+  leaseStartDate?: any; 
+  leaseEndDate?: any; 
   status: TenantStatus;
-  arrearsBroughtForward?: number; // Default to 0
+  arrearsBroughtForward?: number; 
   notes?: string;
   createdAt?: any;
   updatedAt?: any;
@@ -226,19 +226,19 @@ export type InvoiceStatus = 'Draft' | 'Sent' | 'Paid' | 'Overdue' | 'Cancelled';
 export interface RentInvoice {
   id?: string;
   tenantId: string;
-  tenantName: string; // Denormalized for easier display
-  unitNumber: string; // Denormalized
-  invoiceNumber: string; // Should be generated, e.g., INV-YYYYMM-SEQ
-  invoiceDate: any; // Firestore Timestamp
-  dueDate: any; // Firestore Timestamp
-  periodCoveredStart: any; // Firestore Timestamp
-  periodCoveredEnd: any; // Firestore Timestamp
+  tenantName: string; 
+  unitNumber: string; 
+  invoiceNumber: string; 
+  invoiceDate: any; 
+  dueDate: any; 
+  periodCoveredStart: any; 
+  periodCoveredEnd: any; 
   rentAmount: number;
   arrearsBroughtForward: number;
   otherCharges?: { description: string; amount: number }[];
   totalDue: number;
   amountPaid: number;
-  datePaid?: any; // Firestore Timestamp
+  datePaid?: any; 
   paymentMethod?: string;
   status: InvoiceStatus;
   notes?: string;
@@ -255,15 +255,14 @@ export interface RentInvoiceFormValues {
   periodCoveredStart: Date;
   periodCoveredEnd: Date;
   rentAmount: number;
-  arrearsBroughtForward?: number; // Optional, can be fetched or manually entered
-  // otherCharges can be added later if needed
+  arrearsBroughtForward?: number; 
   notes?: string;
 }
 
 export type ProfessionalStatus = 'Active' | 'On Hold' | 'Completed' | 'Terminated';
 
 export interface ProfessionalPayment {
-  date: any; // Firestore Timestamp or Date
+  date: any; 
   amountPaid: number;
   notes?: string;
 }
@@ -271,15 +270,15 @@ export interface ProfessionalPayment {
 export interface Professional {
   id?: string;
   name: string;
-  serviceType: string; // e.g., 'Plumber', 'Electrician', 'Legal Consultant'
+  serviceType: string; 
   contactInfo: {
     phone?: string;
     email?: string;
   };
   assignedJobDescription?: string;
   totalAgreedCharge: number;
-  paymentHistory: ProfessionalPayment[]; // Array of payments made
-  balanceDue: number; // Auto-calculated: totalAgreedCharge - sum(paymentHistory.amountPaid)
+  paymentHistory: ProfessionalPayment[]; 
+  balanceDue: number; 
   status: ProfessionalStatus;
   createdAt?: any;
   updatedAt?: any;
@@ -300,14 +299,3 @@ export interface ProfessionalPaymentFormValues {
   amountPaid: number;
   notes?: string;
 }
-
-// Type for Company Information (for Tax Summary)
-// Note: This was previously `CompanyInfo`. We are integrating these into `GlobalSettings`
-// for simplicity in this iteration. If a separate collection is strictly needed later, we can refactor.
-// export interface CompanyInfo {
-//   id?: string; // Typically a single known ID like 'main_company_details'
-//   companyName: string;
-//   address: string;
-//   registrationNumber?: string;
-//   taxPIN: string;
-// }
