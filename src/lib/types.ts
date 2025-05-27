@@ -7,7 +7,7 @@ export interface UserProfile {
   accessLevel: AccessLevel;
   shares?: number;
   penaltyBalance?: number; 
-  tpin?: string; 
+  tpin?: string; // Added TPIN field
   requiresPasswordChange?: boolean;
   status?: 'Active' | 'Inactive';
   photoURL?: string | null;
@@ -25,6 +25,7 @@ export interface UserFormValues {
   password?: string; 
   status: 'Active' | 'Inactive';
   requiresPasswordChange: boolean;
+  tpin?: string; // Added TPIN field
 }
 
 
@@ -297,4 +298,14 @@ export interface ProfessionalPaymentFormValues {
   date: Date;
   amountPaid: number;
   notes?: string;
+}
+
+// Type for Company Information (for Tax Summary)
+export interface CompanyInfo {
+  id?: string; // Typically a single known ID like 'main_company_details'
+  companyName: string;
+  address: string;
+  registrationNumber?: string;
+  taxPIN: string;
+  // Consider adding other fields like financial year start/end if not globally set
 }

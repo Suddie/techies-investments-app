@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -11,6 +12,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+  FormDescription, // Added FormDescription
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import {
@@ -21,31 +23,26 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import type { UserProfile, UserRole, UserFormValues as UserFormSchemaValues } from '@/lib/types'; // Updated import
+import type { UserProfile, UserRole, UserFormValues as UserFormSchemaValues } from '@/lib/types';
 import { ROLES } from '@/lib/constants';
-import { DialogFooter, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"; 
+import { DialogFooter, DialogHeader, DialogTitle, DialogDescription as DialogDesc } from "@/components/ui/dialog"; 
 import React, { useEffect, useState } from "react";
 
 const rolesArray = Object.keys(ROLES) as UserRole[];
 
-// Schema for the form
 const userFormZodSchema = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters." }),
   email: z.string().email({ message: "Invalid email address." }),
   role: z.enum(rolesArray),
-  password: z.string().optional(), // Password handling is conditional
+  password: z.string().optional(),
   status: z.enum(['Active', 'Inactive']),
   requiresPasswordChange: z.boolean().default(true),
-}).superRefine((data, ctx) => {
-  // Conditionally require password if it's a new user (user prop is not passed)
-  // This refinement is tricky here because `user` prop isn't part of `data`.
-  // This logic is better handled in the onSubmit or by passing a flag to the schema.
-  // For now, password validation will be handled in the `handleSubmit` function.
+  tpin: z.string().max(20, "TPIN is too long.").optional().or(z.literal('')), // Added TPIN schema
 });
 
 
 interface UserFormProps {
-  user?: UserProfile | null; // For editing existing user
+  user?: UserProfile | null; 
   onSave: (data: UserFormSchemaValues, userId?: string) => Promise<void>;
   onCancel: () => void;
 }
@@ -53,15 +50,16 @@ interface UserFormProps {
 export default function UserForm({ user, onSave, onCancel }: UserFormProps) {
   const [isLoading, setIsLoading] = useState(false);
   
-  const form = useForm<UserFormSchemaValues>({ // Use the imported type
-    resolver: zodResolver(userFormZodSchema), // Use the Zod schema
+  const form = useForm<UserFormSchemaValues>({ 
+    resolver: zodResolver(userFormZodSchema), 
     defaultValues: {
       name: user?.name || "",
       email: user?.email || "",
       role: user?.role || "Member",
-      password: "", // Always start with empty password field
+      password: "", 
       status: user?.status || 'Active',
       requiresPasswordChange: user ? user.requiresPasswordChange ?? true : true,
+      tpin: user?.tpin || "", // Default TPIN
     },
   });
 
@@ -69,11 +67,12 @@ export default function UserForm({ user, onSave, onCancel }: UserFormProps) {
     if (user) {
       form.reset({
         name: user.name || "",
-        email: user.email || "", // Email will be disabled for edit, but good to have it in form state
+        email: user.email || "", 
         role: user.role || "Member",
-        password: "", // Password not pre-filled
+        password: "", 
         status: user.status || 'Active',
         requiresPasswordChange: user.requiresPasswordChange ?? true,
+        tpin: user.tpin || "", // Reset TPIN
       });
     } else {
        form.reset({
@@ -83,6 +82,7 @@ export default function UserForm({ user, onSave, onCancel }: UserFormProps) {
         password: "",
         status: 'Active',
         requiresPasswordChange: true,
+        tpin: "", // Reset TPIN for new user
       });
     }
   }, [user, form]);
@@ -90,33 +90,28 @@ export default function UserForm({ user, onSave, onCancel }: UserFormProps) {
 
   const handleSubmit = async (data: UserFormSchemaValues) => {
     setIsLoading(true);
-    // For new users, password is required.
     if (!user && (!data.password || data.password.length < 6)) {
         form.setError("password", { type: "manual", message: "Password is required for new users and must be at least 6 characters." });
         setIsLoading(false);
         return;
     }
-    // If editing an existing user AND a new password is provided, it must be at least 6 characters.
     if (user && data.password && data.password.length > 0 && data.password.length < 6) {
         form.setError("password", { type: "manual", message: "New password must be at least 6 characters." });
         setIsLoading(false);
         return;
     }
-    // If editing existing user and password field is empty, it means don't change the password.
-    // The onSave handler will decide what to do with an empty password for existing user (i.e., ignore it).
     
     await onSave(data, user?.uid);
     setIsLoading(false);
-    // Dialog closing and state reset is handled by parent page (admin/users/page.tsx)
   };
 
   return (
     <>
       <DialogHeader>
         <DialogTitle>{user ? "Edit User Profile" : "Add New User"}</DialogTitle>
-        <DialogDescription>
+        <DialogDesc>
           {user ? `Update profile details for ${user.name}. Email cannot be changed.` : "Fill in the details to create a new user account and Firestore profile. This will log you (Admin) in as the new user temporarily."}
-        </DialogDescription>
+        </DialogDesc>
       </DialogHeader>
       <Form {...form}>
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-2">
@@ -146,12 +141,6 @@ export default function UserForm({ user, onSave, onCancel }: UserFormProps) {
               </FormItem>
             )}
           />
-          {/* Password field behavior:
-              - For new users (!user): Show "Initial Password", it's required.
-              - For existing users (user): Show "New Password (Optional)".
-                                         If filled, attempt to change. If blank, password remains unchanged.
-                                         (Note: Admin changing other user's password client-side is complex and often not done this way)
-          */}
           <FormField
             control={form.control}
             name="password"
@@ -192,6 +181,22 @@ export default function UserForm({ user, onSave, onCancel }: UserFormProps) {
               </FormItem>
             )}
           />
+
+          <FormField
+            control={form.control}
+            name="tpin"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Tax Payer Identification Number (TPIN)</FormLabel>
+                <FormControl>
+                  <Input placeholder="Enter member's TPIN (optional)" {...field} />
+                </FormControl>
+                <FormDescription>Required for tax summary reports.</FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
           <FormField
             control={form.control}
             name="status"

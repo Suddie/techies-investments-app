@@ -4,85 +4,102 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper Functions
+    // Helper functions
     function isAuthenticated() {
       return request.auth != null;
+    }
+
+    function isUser(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
     }
 
     function getUserAccessLevel(userId) {
       let userDoc = get(/databases/$(database)/documents/users/$(userId));
       return userDoc != null && userDoc.data.accessLevel != null ? userDoc.data.accessLevel : 4; // Default to 4 if no doc or no accessLevel
     }
-
-    // User Profiles
+    
+    // Users collection
     match /users/{userId} {
-      allow read: if isAuthenticated() && (request.auth.uid == userId || getUserAccessLevel(request.auth.uid) <= 2);
+      allow read: if isAuthenticated(); // All authenticated users can read profiles (e.g., for names)
       allow create: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1; // Admin creates users
-      allow update: if isAuthenticated() && (request.auth.uid == userId || getUserAccessLevel(request.auth.uid) <= 1);
-      allow delete: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1; // Only admin can delete
-    }
-    // Allow admin to list all users
-    match /users/{document=**} {
+      allow update: if isUser(userId) || (isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1); // User can update their own, Admin can update any
+      // allow delete: if false; // Deletions typically handled by backend or soft delete
       allow list: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1;
     }
-    
+    match /users/{document=**} { // For collection group queries, if any
+      allow read: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1;
+    }
+
     // Global Settings
     match /settings/global_settings {
       allow read: if isAuthenticated(); // All authenticated users can read settings
       allow write: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1; // Only Admin can write
     }
 
-    // Contributions
-    match /contributions/{contributionId} {
-      allow create: if isAuthenticated() 
-                    && request.resource.data.userId == request.auth.uid
-                    && getUserAccessLevel(request.auth.uid) <= 3;
-      allow read: if isAuthenticated() && 
-                    (resource.data.userId == request.auth.uid || getUserAccessLevel(request.auth.uid) <= 1);
-      allow update, delete: if false; // Client-side updates/deletes disallowed
-    }
-    // Allow admins/treasurers to list all contributions
-     match /contributions/{document=**} {
-      allow list: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1;
-    }
-
     // Expenses
     match /expenses/{expenseId} {
-      allow create: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1;
-      allow read, list: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 3;
-      allow update: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1;
-      allow delete: if false; // Generally disallow client-side deletes for audit trail
+      allow read: if isAuthenticated(); // All authenticated users can read expenses
+      allow create: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1; // Level 1 can create
+      allow update, delete: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1; // Level 1 can update/delete
+    }
+    match /expenses/{document=**} {
+      allow list: if isAuthenticated(); // All authenticated users can list expenses
+    }
+
+    // Contributions
+    match /contributions/{contributionId} {
+      allow create: if isAuthenticated() && request.auth.uid == request.resource.data.userId && getUserAccessLevel(request.auth.uid) <= 3;
+      allow read: if (isAuthenticated() && request.resource.data.userId == request.auth.uid) || (isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1);
+      // Updates and deletes for contributions are typically restricted or handled by backend logic.
+      allow update, delete: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1; 
+    }
+    match /contributions/{document=**} {
+       allow list: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1; // Admins/Treasurers can list all
     }
 
     // Milestones
     match /milestones/{milestoneId} {
-      allow create, update, delete: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1;
-      allow read, list: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 3;
+      allow read: if isAuthenticated(); // All authenticated users can read milestones
+      allow create, update, delete: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1; // Level 1 can manage
+    }
+    match /milestones/{document=**} {
+      allow list: if isAuthenticated();
     }
 
     // Stock Items
     match /stockItems/{itemId} {
+      allow read: if isAuthenticated();
       allow create, update, delete: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1;
-      allow read, list: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 3;
+    }
+     match /stockItems/{document=**} { // Allow listing for all authenticated users
+      allow list: if isAuthenticated();
     }
 
     // Stock Transactions
     match /stockTransactions/{transactionId} {
       allow create: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1;
-      allow read, list: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 3; // Allow view for more roles
-      allow update, delete: if false; // Transactions should be immutable from client
+      allow read: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 3; // All users can view transaction history
+      // Updates/Deletes for transactions are generally disallowed for audit trail integrity
+      allow update, delete: if false; 
     }
-
+    match /stockTransactions/{document=**} {
+      allow list: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 3;
+    }
+    
     // Audit Log
     match /auditLog/{logId} {
-      allow read, list: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 3;
-      allow create, update, delete: if false; // Logs should only be created by trusted server-side code
+      allow read: if isAuthenticated(); // All authenticated users can read
+      allow list: if isAuthenticated();
+      allow create, update, delete: if false; // Logs should be immutable from client
     }
 
     // Bank Balances
     match /bankBalances/{balanceId} {
+      allow read: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 2;
       allow create, update, delete: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1;
-      allow read, list: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 2;
+    }
+     match /bankBalances/{document=**} {
+      allow list: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 2;
     }
 
     // Tenants
@@ -96,14 +113,31 @@ service cloud.firestore {
 
     // Rent Invoices
     match /rentInvoices/{invoiceId} {
+      allow read: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1; // Level 1 can read individual invoices
       allow create, update, delete: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1;
-      allow read, list: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1; // Or <= 2 if others need to view all
+    }
+    match /rentInvoices/{document=**} {
+       allow list: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1; // Level 1 can list all invoices
     }
 
     // Professionals
     match /professionals/{professionalId} {
+      allow read: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 2;
       allow create, update, delete: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1;
-      allow read, list: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 2;
     }
+    match /professionals/{document=**} {
+       allow list: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 2;
+    }
+
+    // Company Info (for Tax Summary) - Assuming a single document, e.g., 'details'
+    match /companyInfo/{docId} { // Use {docId} to match any document ID
+      allow read: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 2;
+      allow create, update, delete: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1;
+    }
+    // No list rule needed if it's expected to be a single document that Admins know the ID of or fetch directly.
+    // If you need a list rule for companyInfo (e.g. if there could be multiple):
+    // match /companyInfo/{document=**} {
+    //   allow list: if isAuthenticated() && getUserAccessLevel(request.auth.uid) <= 1; 
+    // }
   }
 }

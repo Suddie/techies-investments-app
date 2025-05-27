@@ -1,20 +1,21 @@
+
 "use client";
 
 import PageHeader from "@/components/common/PageHeader";
 import UserTable from "@/components/admin/UserTable";
 import UserForm from "@/components/admin/UserForm";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, LogOut, AlertTriangle } from "lucide-react"; // Added AlertTriangle
+import { PlusCircle, LogOut, AlertTriangle } from "lucide-react";
 import {
   Dialog,
   DialogContent,
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { useState } from "react";
-import type { UserProfile, UserFormValues as UserFormSchemaValues } from "@/lib/types"; // Adjusted import
+import type { UserProfile, UserFormValues as UserFormSchemaValues } from "@/lib/types"; 
 import { useToast } from "@/hooks/use-toast";
 import { useFirebase } from "@/contexts/FirebaseProvider";
-import { useAuth } from "@/contexts/AuthProvider"; // For current admin's auth state
+import { useAuth } from "@/contexts/AuthProvider"; 
 import { createUserWithEmailAndPassword, signOut } from "firebase/auth";
 import { doc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { ROLES } from "@/lib/constants";
@@ -26,7 +27,7 @@ export default function UserManagementPage() {
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const { toast } = useToast();
   const { auth, db } = useFirebase();
-  const { user: currentAdminUser, userProfile: currentAdminProfile } = useAuth(); // To re-authenticate admin after new user creation
+  const { user: currentAdminUser, userProfile: currentAdminProfile } = useAuth(); 
 
   const handleAddNewUser = () => {
     setEditingUser(null);
@@ -45,16 +46,16 @@ export default function UserManagementPage() {
       return;
     }
 
-    const userProfileData: Omit<UserProfile, "uid" | "photoURL" | "email"> & { email?: string | null, createdAt?: any } = {
+    const userProfileData: Omit<UserProfile, "uid" | "photoURL" | "email"> & { email?: string | null, createdAt?: any, tpin?: string } = {
       name: data.name,
       role: data.role,
       accessLevel: accessLevel,
       status: data.status,
       requiresPasswordChange: data.requiresPasswordChange,
-      // photoURL will be managed by user themselves or default Firebase Auth photo
+      tpin: data.tpin || "", // Save TPIN
     };
 
-    if (userIdToUpdate) { // Editing existing user's Firestore profile
+    if (userIdToUpdate) { 
       try {
         const userDocRef = doc(db, "users", userIdToUpdate);
         await updateDoc(userDocRef, {
@@ -63,7 +64,7 @@ export default function UserManagementPage() {
           accessLevel: accessLevel,
           status: data.status,
           requiresPasswordChange: data.requiresPasswordChange,
-          // Email and password updates are handled differently or not at all by admin here
+          tpin: data.tpin || "", // Update TPIN
         });
         toast({
           title: "User Profile Updated",
@@ -79,18 +80,16 @@ export default function UserManagementPage() {
           variant: "destructive",
         });
       }
-    } else { // Creating new Auth user and their Firestore profile
+    } else { 
       if (!data.email || !data.password) {
         toast({ title: "Missing Information", description: "Email and password are required for new users.", variant: "destructive" });
         return;
       }
       try {
-        // Create Firebase Auth user
         const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
         const newAuthUser = userCredential.user;
         
-        // Create Firestore profile document for the new user
-        userProfileData.email = data.email; // Add email to profile data
+        userProfileData.email = data.email; 
         userProfileData.createdAt = serverTimestamp();
         
         const userDocRef = doc(db, "users", newAuthUser.uid);
@@ -99,11 +98,10 @@ export default function UserManagementPage() {
         toast({
           title: "User Created Successfully!",
           description: `${data.name} (${data.email}) has been created. IMPORTANT: You (Admin) are now logged in as the new user. Please log out and log back in with your admin credentials.`,
-          duration: 15000, // Longer duration for this important message
+          duration: 15000, 
           action: (
             <Button variant="outline" size="sm" onClick={async () => {
               await signOut(auth);
-              // router.push('/login'); // AuthProvider will handle redirect
             }}>
               <LogOut className="mr-2 h-4 w-4" /> Log Out Now
             </Button>
@@ -111,8 +109,6 @@ export default function UserManagementPage() {
         });
         setIsUserFormOpen(false);
         setEditingUser(null);
-        // Note: Admin's session is now switched. AuthProvider will eventually redirect.
-        // No need to re-fetch user list here as onSnapshot in UserTable will update.
       } catch (error: any) {
         console.error("Error creating user:", error);
         toast({
@@ -134,7 +130,7 @@ export default function UserManagementPage() {
         actions={
           <Dialog open={isUserFormOpen} onOpenChange={(isOpen) => {
             setIsUserFormOpen(isOpen);
-            if (!isOpen) setEditingUser(null); // Reset editing user when dialog closes
+            if (!isOpen) setEditingUser(null); 
           }}>
             <DialogTrigger asChild>
               <Button onClick={handleAddNewUser}>

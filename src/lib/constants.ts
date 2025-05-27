@@ -1,5 +1,5 @@
 
-import type { UserRole, AccessLevel, GlobalSettings } from './types'; // Ensure GlobalSettings is imported
+import type { UserRole, AccessLevel, GlobalSettings } from './types'; 
 import {
   LayoutDashboard,
   HandCoins,
@@ -11,7 +11,8 @@ import {
   History,
   Landmark,
   Home,
-  Briefcase // Added icon for Professional Management
+  Briefcase,
+  FileBarChart, // Added icon for Tax Summary
 } from 'lucide-react';
 
 export const ROLES: Record<UserRole, { name: UserRole; accessLevel: AccessLevel }> = {
@@ -23,7 +24,7 @@ export const ROLES: Record<UserRole, { name: UserRole; accessLevel: AccessLevel 
   'Investment Lead': { name: 'Investment Lead', accessLevel: 2 },
   Secretary: { name: 'Secretary', accessLevel: 2 },
   Member: { name: 'Member', accessLevel: 3 },
-  'Finance Professional': { name: 'Finance Professional', accessLevel: 1 }, // Or a specific level
+  'Finance Professional': { name: 'Finance Professional', accessLevel: 1 }, 
 };
 
 export const ACCESS_LEVELS: Record<AccessLevel, string> = {
@@ -58,8 +59,8 @@ export const NAVIGATION_LINKS = [
   { href: "/tenant-management", label: "Tenant Management", icon: Home, adminOnly: false, requiredAccessLevel: 1 }, 
   { href: "/professionals", label: "Professionals", icon: Briefcase, adminOnly: false, requiredAccessLevel: 1 },
   { href: "/reports", label: "Reports", icon: FileText, adminOnly: false, requiredAccessLevel: 2 },
+  { href: "/tax-summary", label: "Tax Summary", icon: FileBarChart, adminOnly: false, requiredAccessLevel: 2 }, // Added Tax Summary
   { href: "/admin/users", label: "User Management", icon: Users, adminOnly: true, requiredAccessLevel: 1 },
   { href: "/audit-log", label: "Audit Log", icon: History, adminOnly: false, requiredAccessLevel: 3 },
   { href: "/bank-management", label: "Bank Management", icon: Landmark, adminOnly: false, requiredAccessLevel: 2 },
-  // Add more links for other features like project management etc.
 ];
