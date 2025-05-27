@@ -22,7 +22,7 @@ import { DialogFooter, DialogHeader, DialogTitle, DialogDescription } from "@/co
 import { CalendarIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format, addMonths } from "date-fns";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react"; // Added useMemo
 import type { Tenant, RentInvoice, RentInvoiceFormValues } from "@/lib/types";
 import { useSettings } from "@/contexts/SettingsProvider";
 
@@ -55,8 +55,8 @@ export default function RentInvoiceForm({ tenant, invoice, onSave, onCancel }: R
   const { settings } = useSettings();
   const [isLoading, setIsLoading] = useState(false);
 
-  const defaultPeriodStart = new Date();
-  const defaultPeriodEnd = addMonths(defaultPeriodStart, 1); // Default to one month period
+  const defaultPeriodStart = useMemo(() => new Date(), []);
+  const defaultPeriodEnd = useMemo(() => addMonths(defaultPeriodStart, 1), [defaultPeriodStart]);
 
   const form = useForm<RentInvoiceFormValues>({
     resolver: zodResolver(rentInvoiceFormSchema),
@@ -71,9 +71,10 @@ export default function RentInvoiceForm({ tenant, invoice, onSave, onCancel }: R
       notes: invoice?.notes || "",
     },
   });
+  const { reset } = form; // Destructure reset
 
   useEffect(() => {
-    form.reset({
+    reset({ // Use the destructured reset
       tenantId: tenant.id || "",
       invoiceDate: invoice?.invoiceDate ? (invoice.invoiceDate.toDate ? invoice.invoiceDate.toDate() : new Date(invoice.invoiceDate)) : new Date(),
       dueDate: invoice?.dueDate ? (invoice.dueDate.toDate ? invoice.dueDate.toDate() : new Date(invoice.dueDate)) : addMonths(new Date(), 1),
@@ -83,7 +84,7 @@ export default function RentInvoiceForm({ tenant, invoice, onSave, onCancel }: R
       arrearsBroughtForward: invoice?.arrearsBroughtForward || tenant.arrearsBroughtForward || 0,
       notes: invoice?.notes || "",
     });
-  }, [tenant, invoice, form, defaultPeriodStart, defaultPeriodEnd]);
+  }, [tenant, invoice, reset, defaultPeriodStart, defaultPeriodEnd]); // Use reset in dependency array
 
   const watchedRentAmount = form.watch("rentAmount");
   const watchedArrears = form.watch("arrearsBroughtForward");
