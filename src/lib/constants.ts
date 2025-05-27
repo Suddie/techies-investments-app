@@ -12,7 +12,8 @@ import {
   Landmark,
   Home,
   Briefcase,
-  FileBarChart, // Added icon for Tax Summary
+  FileBarChart, 
+  Settings as SettingsIcon, // Renamed to avoid conflict
 } from 'lucide-react';
 
 export const ROLES: Record<UserRole, { name: UserRole; accessLevel: AccessLevel }> = {
@@ -42,10 +43,11 @@ export const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
   penaltyAmount: 500,
   invoiceLogoUrl: null,
   useAppLogoForInvoice: false,
-  invoiceCompanyName: "",
-  invoiceAddress: "",
-  invoiceContact: "",
-  financialYearStart: "01-01",
+  invoiceCompanyName: "Techies Investments", // Default company name
+  invoiceAddress: "P.O. Box 123, City, Country", // Default address
+  invoiceContact: "contact@techiesinvestments.com / +265 123 456 789", // Default contact
+  companyTaxPIN: "P123456789M", // Default placeholder TPIN
+  financialYearStart: "01-01", // Default financial year start (Jan 1st)
 };
 
 export const APP_NAME = "Techies Investments App";
@@ -59,8 +61,10 @@ export const NAVIGATION_LINKS = [
   { href: "/tenant-management", label: "Tenant Management", icon: Home, adminOnly: false, requiredAccessLevel: 1 }, 
   { href: "/professionals", label: "Professionals", icon: Briefcase, adminOnly: false, requiredAccessLevel: 1 },
   { href: "/reports", label: "Reports", icon: FileText, adminOnly: false, requiredAccessLevel: 2 },
-  { href: "/tax-summary", label: "Tax Summary", icon: FileBarChart, adminOnly: false, requiredAccessLevel: 2 }, // Added Tax Summary
-  { href: "/admin/users", label: "User Management", icon: Users, adminOnly: true, requiredAccessLevel: 1 },
+  { href: "/tax-summary", label: "Tax Summary", icon: FileBarChart, adminOnly: false, requiredAccessLevel: 2 }, 
+  // User Management and Settings are typically accessed differently (e.g., user dropdown or specific admin section)
+  // { href: "/admin/users", label: "User Management", icon: Users, adminOnly: true, requiredAccessLevel: 1 },
+  // { href: "/admin/settings", label: "Settings", icon: SettingsIcon, adminOnly: true, requiredAccessLevel: 1 }, // SettingsIcon used here
   { href: "/audit-log", label: "Audit Log", icon: History, adminOnly: false, requiredAccessLevel: 3 },
   { href: "/bank-management", label: "Bank Management", icon: Landmark, adminOnly: false, requiredAccessLevel: 2 },
 ];

@@ -54,6 +54,7 @@ export interface GlobalSettings {
   invoiceCompanyName?: string;
   invoiceAddress?: string;
   invoiceContact?: string;
+  companyTaxPIN?: string; // Added for company tax ID
   financialYearStart?: string; 
 }
 
@@ -301,11 +302,12 @@ export interface ProfessionalPaymentFormValues {
 }
 
 // Type for Company Information (for Tax Summary)
-export interface CompanyInfo {
-  id?: string; // Typically a single known ID like 'main_company_details'
-  companyName: string;
-  address: string;
-  registrationNumber?: string;
-  taxPIN: string;
-  // Consider adding other fields like financial year start/end if not globally set
-}
+// Note: This was previously `CompanyInfo`. We are integrating these into `GlobalSettings`
+// for simplicity in this iteration. If a separate collection is strictly needed later, we can refactor.
+// export interface CompanyInfo {
+//   id?: string; // Typically a single known ID like 'main_company_details'
+//   companyName: string;
+//   address: string;
+//   registrationNumber?: string;
+//   taxPIN: string;
+// }

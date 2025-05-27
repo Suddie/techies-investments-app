@@ -15,6 +15,7 @@ import {
   FormDescription,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea"; // Added Textarea
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import PageHeader from "@/components/common/PageHeader";
@@ -32,6 +33,10 @@ import { Label } from "@/components/ui/label";
 const generalSettingsSchema = z.object({
   appName: z.string().min(3, "App name must be at least 3 characters.").max(50, "App name must be at most 50 characters."),
   currencySymbol: z.string().min(1, "Currency symbol is required.").max(5, "Currency symbol is too long."),
+  invoiceCompanyName: z.string().min(3, "Company name is required.").max(100, "Company name is too long.").optional().or(z.literal('')),
+  invoiceAddress: z.string().min(5, "Address is required.").max(200, "Address is too long.").optional().or(z.literal('')),
+  invoiceContact: z.string().min(5, "Contact info is required.").max(100, "Contact info is too long.").optional().or(z.literal('')),
+  companyTaxPIN: z.string().min(5, "Tax PIN is required.").max(30, "Tax PIN is too long.").optional().or(z.literal('')),
 });
 
 type GeneralSettingsFormValues = z.infer<typeof generalSettingsSchema>;
@@ -61,6 +66,10 @@ export default function AdminSettingsPage() {
     defaultValues: {
       appName: settings.appName || "",
       currencySymbol: settings.currencySymbol || "MK",
+      invoiceCompanyName: settings.invoiceCompanyName || "",
+      invoiceAddress: settings.invoiceAddress || "",
+      invoiceContact: settings.invoiceContact || "",
+      companyTaxPIN: settings.companyTaxPIN || "",
     },
   });
 
@@ -78,6 +87,10 @@ export default function AdminSettingsPage() {
       generalForm.reset({
         appName: settings.appName,
         currencySymbol: settings.currencySymbol || "MK",
+        invoiceCompanyName: settings.invoiceCompanyName || "",
+        invoiceAddress: settings.invoiceAddress || "",
+        invoiceContact: settings.invoiceContact || "",
+        companyTaxPIN: settings.companyTaxPIN || "",
       });
       financialForm.reset({
         contributionMin: settings.contributionMin,
@@ -95,6 +108,10 @@ export default function AdminSettingsPage() {
       await updateDoc(settingsDocRef, {
         appName: values.appName,
         currencySymbol: values.currencySymbol,
+        invoiceCompanyName: values.invoiceCompanyName,
+        invoiceAddress: values.invoiceAddress,
+        invoiceContact: values.invoiceContact,
+        companyTaxPIN: values.companyTaxPIN,
       });
       toast({
         title: "Settings Updated",
@@ -215,8 +232,8 @@ export default function AdminSettingsPage() {
           <div className="grid gap-6 md:grid-cols-2">
             <Card>
               <CardHeader>
-                <CardTitle>Application Details</CardTitle>
-                <CardDescription>Manage the application's name and main currency.</CardDescription>
+                <CardTitle>Application & Company Details</CardTitle>
+                <CardDescription>Manage general application and company information.</CardDescription>
               </CardHeader>
               <CardContent>
                 {settingsLoading ? (
@@ -248,6 +265,62 @@ export default function AdminSettingsPage() {
                               <Input placeholder="e.g., $, MK, £" {...field} />
                             </FormControl>
                             <FormDescription>The main currency symbol used for financial values.</FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={generalForm.control}
+                        name="invoiceCompanyName"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Company Name (for Invoices/Reports)</FormLabel>
+                            <FormControl>
+                              <Input placeholder="Your Company Ltd." {...field} />
+                            </FormControl>
+                            <FormDescription>Name appearing on invoices and reports.</FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={generalForm.control}
+                        name="invoiceAddress"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Company Address (for Invoices/Reports)</FormLabel>
+                            <FormControl>
+                              <Textarea placeholder="P.O. Box 123, City, Country" {...field} />
+                            </FormControl>
+                            <FormDescription>Address appearing on invoices and reports.</FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={generalForm.control}
+                        name="invoiceContact"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Company Contact (for Invoices/Reports)</FormLabel>
+                            <FormControl>
+                              <Input placeholder="email@example.com / +123456789" {...field} />
+                            </FormControl>
+                            <FormDescription>Contact details for invoices and reports.</FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                       <FormField
+                        control={generalForm.control}
+                        name="companyTaxPIN"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Company Tax PIN</FormLabel>
+                            <FormControl>
+                              <Input placeholder="Your Company's Tax PIN" {...field} />
+                            </FormControl>
+                            <FormDescription>The company's official Tax Payer Identification Number.</FormDescription>
                             <FormMessage />
                           </FormItem>
                         )}

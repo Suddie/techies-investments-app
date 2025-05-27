@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import React, { useState } from "react";
+import { useSettings } from "@/contexts/SettingsProvider"; // Import useSettings
 
 // Helper function to generate year options (e.g., last 5 years to current year)
 const generateYearOptions = () => {
@@ -19,10 +20,19 @@ const generateYearOptions = () => {
   return years;
 };
 
+interface MockSummaryData {
+  year: string;
+  totalIncome: number;
+  totalExpenditure: number;
+  surplusDeficit: number;
+  // Add more fields as needed for the mock display
+}
+
 export default function TaxSummaryPage() {
   const [selectedYear, setSelectedYear] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
-  const [summaryData, setSummaryData] = useState<any | null>(null); // Replace 'any' with a proper type later
+  const [summaryData, setSummaryData] = useState<MockSummaryData | null>(null);
+  const { settings: globalSettings } = useSettings(); // Get global settings
 
   const yearOptions = generateYearOptions();
 
@@ -32,17 +42,23 @@ export default function TaxSummaryPage() {
       return;
     }
     setLoading(true);
+    setSummaryData(null); // Clear previous summary
+
     // Simulate data fetching and processing
     console.log(`Generating summary for year: ${selectedYear}`);
     // In a real app, you would fetch data from various collections (contributions, expenses, etc.)
     // and aggregate it based on the selectedYear and company/user TPINs.
     await new Promise(resolve => setTimeout(resolve, 1500)); 
+    
+    // Create mock data
+    const mockIncome = Math.floor(Math.random() * 5000000) + 1000000;
+    const mockExpenditure = Math.floor(Math.random() * 3000000) + 500000;
+    
     setSummaryData({
       year: selectedYear,
-      // Mock data, replace with actual aggregated data
-      totalIncome: Math.floor(Math.random() * 500000) + 100000,
-      totalExpenditure: Math.floor(Math.random() * 300000) + 50000,
-      // ... more fields
+      totalIncome: mockIncome,
+      totalExpenditure: mockExpenditure,
+      surplusDeficit: mockIncome - mockExpenditure,
     });
     setLoading(false);
   };
@@ -81,28 +97,33 @@ export default function TaxSummaryPage() {
           </div>
 
           {summaryData && (
-            <Card className="mt-6">
+            <Card className="mt-6 border-primary/20 shadow-md">
               <CardHeader>
                 <CardTitle>Financial Summary for {summaryData.year}</CardTitle>
-                <CardDescription>
-                  This is an automatically generated report. Please verify all figures.
+                <CardDescription className="italic">
+                  Company: {globalSettings.invoiceCompanyName || globalSettings.appName} <br/>
+                  Tax PIN: {globalSettings.companyTaxPIN || "Not Set"}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {/* Placeholder for ReportView component or direct rendering */}
                 <div>
-                  <h3 className="font-semibold">Income Statement</h3>
-                  <p>Total Income: {summaryData.totalIncome.toLocaleString()}</p>
-                  <p>Total Expenditure: {summaryData.totalExpenditure.toLocaleString()}</p>
-                  <p className="font-bold">Surplus/Deficit: {(summaryData.totalIncome - summaryData.totalExpenditure).toLocaleString()}</p>
+                  <h3 className="font-semibold text-lg mb-2">Income Statement</h3>
+                  <div className="space-y-1 text-sm">
+                    <p className="flex justify-between"><span>Total Income:</span> <span>{globalSettings.currencySymbol} {summaryData.totalIncome.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span></p>
+                    <p className="flex justify-between"><span>Total Expenditure:</span> <span>{globalSettings.currencySymbol} {summaryData.totalExpenditure.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span></p>
+                    <p className="flex justify-between font-bold border-t pt-1 mt-1"><span>Surplus / Deficit:</span> <span>{globalSettings.currencySymbol} {summaryData.surplusDeficit.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span></p>
+                  </div>
                 </div>
                 <div className="mt-4">
-                  <h3 className="font-semibold">Supporting Information</h3>
-                  <p className="text-sm text-muted-foreground">(Member list with TPINs, etc. - to be implemented)</p>
+                  <h3 className="font-semibold text-lg mb-2">Supporting Information</h3>
+                  <p className="text-sm text-muted-foreground">(Member list with TPINs, detailed income/expense breakdown, etc. - to be implemented)</p>
                 </div>
-                <div className="mt-6 text-xs text-muted-foreground">
+                <div className="mt-6 text-xs text-muted-foreground border-t pt-3">
                     <p>Generated on: {new Date().toLocaleDateString()}</p>
-                    {/* <p>{globalSettings.appName} - {globalSettings.invoiceAddress || "Investment Group"}</p> */}
+                    <p className="mt-2 italic">
+                        This summary is generated for {globalSettings.invoiceCompanyName || globalSettings.appName}. 
+                        Please verify all figures before submission to relevant authorities.
+                    </p>
                 </div>
               </CardContent>
             </Card>
