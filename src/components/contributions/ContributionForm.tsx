@@ -60,7 +60,7 @@ export default function ContributionForm() {
   const formSchema = z.object({
     amount: z.coerce.number()
       .min(settings.contributionMin || 1, `Minimum contribution is ${settings.currencySymbol}${settings.contributionMin || 1}`)
-      .max(settings.contributionMax || Infinity, `Maximum contribution is ${settings.currencySymbol}${settings.contributionMax || 'Unlimited'}`),
+      .max(settings.contributionMax && settings.contributionMax > 0 ? settings.contributionMax : Infinity, `Maximum contribution is ${settings.currencySymbol}${settings.contributionMax || 'Unlimited'}`),
     monthsCovered: z.array(z.string()).min(1, "Please select at least one month."),
     penaltyPaidAmount: z.coerce.number().min(0, "Penalty payment cannot be negative.").optional(),
     notes: z.string().max(500, "Notes are too long.").optional(),
@@ -95,8 +95,9 @@ export default function ContributionForm() {
         return;
     }
 
-    if (values.penaltyPaidAmount && values.penaltyPaidAmount > (userProfile.penaltyBalance || 0)) {
-        form.setError("penaltyPaidAmount", { message: `Cannot pay more than outstanding penalty of ${settings.currencySymbol}${(userProfile.penaltyBalance || 0).toLocaleString()}.`})
+    const outstandingPenalty = userProfile.penaltyBalance || 0;
+    if (values.penaltyPaidAmount && values.penaltyPaidAmount > outstandingPenalty) {
+        form.setError("penaltyPaidAmount", { message: `Cannot pay more than outstanding penalty of ${settings.currencySymbol}${outstandingPenalty.toLocaleString()}.`});
         return;
     }
 
@@ -109,7 +110,7 @@ export default function ContributionForm() {
         penaltyPaidAmount: values.penaltyPaidAmount || 0,
         monthsCovered: values.monthsCovered.sort(), 
         datePaid: serverTimestamp(), 
-        isLate: false, 
+        isLate: false, // This should ideally be set by a Cloud Function
         notes: values.notes || "",
         createdAt: serverTimestamp(),
       };
@@ -121,7 +122,8 @@ export default function ContributionForm() {
 
       toast({
         title: "Contribution Submitted Successfully!",
-        description: `Your contribution of ${settings.currencySymbol}${values.amount} ${values.penaltyPaidAmount ? `(and ${settings.currencySymbol}${values.penaltyPaidAmount} for penalties) ` : ''}for ${values.monthsCovered.join(', ')} has been recorded.`,
+        description: `Your contribution of ${settings.currencySymbol}${values.amount.toLocaleString()} ${values.penaltyPaidAmount && values.penaltyPaidAmount > 0 ? `(and ${settings.currencySymbol}${values.penaltyPaidAmount.toLocaleString()} for penalties) ` : ''}for ${values.monthsCovered.join(', ')} has been recorded.`,
+        duration: 7000,
       });
       form.reset({ 
         amount: settings.contributionMin || 0, 
@@ -237,8 +239,9 @@ export default function ContributionForm() {
                     <FormControl>
                       <Input type="number" placeholder="e.g. 500" {...field} />
                     </FormControl>
-                    <FormDescription>
-                      You have an outstanding penalty balance of {settings.currencySymbol}{(userProfile.penaltyBalance || 0).toLocaleString()}.
+                    <FormDescription className="text-primary font-medium">
+                      You have an outstanding penalty balance of {settings.currencySymbol}{(userProfile.penaltyBalance || 0).toLocaleString()}. 
+                      Enter an amount to pay towards this balance.
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -273,4 +276,3 @@ export default function ContributionForm() {
     </Card>
   );
 }
-

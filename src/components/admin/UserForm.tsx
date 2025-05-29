@@ -12,7 +12,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-  FormDescription, // Added FormDescription
+  FormDescription, 
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import {
@@ -27,6 +27,7 @@ import type { UserProfile, UserRole, UserFormValues as UserFormSchemaValues } fr
 import { ROLES } from '@/lib/constants';
 import { DialogFooter, DialogHeader, DialogTitle, DialogDescription as DialogDesc } from "@/components/ui/dialog"; 
 import React, { useEffect, useState } from "react";
+import { useSettings } from "@/contexts/SettingsProvider"; // Added for currency symbol
 
 const rolesArray = Object.keys(ROLES) as UserRole[];
 
@@ -37,7 +38,7 @@ const userFormZodSchema = z.object({
   password: z.string().optional(),
   status: z.enum(['Active', 'Inactive']),
   requiresPasswordChange: z.boolean().default(true),
-  tpin: z.string().max(20, "TPIN is too long.").optional().or(z.literal('')), // Added TPIN schema
+  tpin: z.string().max(20, "TPIN is too long.").optional().or(z.literal('')), 
 });
 
 
@@ -49,6 +50,7 @@ interface UserFormProps {
 
 export default function UserForm({ user, onSave, onCancel }: UserFormProps) {
   const [isLoading, setIsLoading] = useState(false);
+  const { settings } = useSettings(); // Get settings for currency
   
   const form = useForm<UserFormSchemaValues>({ 
     resolver: zodResolver(userFormZodSchema), 
@@ -59,7 +61,7 @@ export default function UserForm({ user, onSave, onCancel }: UserFormProps) {
       password: "", 
       status: user?.status || 'Active',
       requiresPasswordChange: user ? user.requiresPasswordChange ?? true : true,
-      tpin: user?.tpin || "", // Default TPIN
+      tpin: user?.tpin || "", 
     },
   });
 
@@ -72,7 +74,7 @@ export default function UserForm({ user, onSave, onCancel }: UserFormProps) {
         password: "", 
         status: user.status || 'Active',
         requiresPasswordChange: user.requiresPasswordChange ?? true,
-        tpin: user.tpin || "", // Reset TPIN
+        tpin: user.tpin || "", 
       });
     } else {
        form.reset({
@@ -82,7 +84,7 @@ export default function UserForm({ user, onSave, onCancel }: UserFormProps) {
         password: "",
         status: 'Active',
         requiresPasswordChange: true,
-        tpin: "", // Reset TPIN for new user
+        tpin: "", 
       });
     }
   }, [user, form]);
@@ -196,6 +198,19 @@ export default function UserForm({ user, onSave, onCancel }: UserFormProps) {
               </FormItem>
             )}
           />
+
+          {user && user.penaltyBalance !== undefined && user.penaltyBalance > 0 && (
+            <FormItem>
+              <FormLabel>Outstanding Penalty Balance</FormLabel>
+              <Input 
+                type="text" 
+                value={`${settings.currencySymbol} ${user.penaltyBalance.toLocaleString()}`} 
+                readOnly 
+                className="bg-muted text-muted-foreground"
+              />
+              <FormDescription>This user has an outstanding penalty balance.</FormDescription>
+            </FormItem>
+          )}
 
           <FormField
             control={form.control}
