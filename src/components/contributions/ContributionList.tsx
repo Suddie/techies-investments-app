@@ -10,7 +10,7 @@ import { useAuth } from '@/contexts/AuthProvider';
 import { useSettings } from '@/contexts/SettingsProvider';
 import { useFirebase } from '@/contexts/FirebaseProvider';
 import { collection, query, where, orderBy, onSnapshot, Timestamp } from 'firebase/firestore';
-import { format, parse, getDay, getDate } from 'date-fns';
+import { format, parse, getDay, getDate, addMonths, startOfMonth, setDate } from 'date-fns'; // Added addMonths, startOfMonth, setDate
 import { Skeleton } from '@/components/ui/skeleton';
 import { AlertTriangle, CheckCircle, DollarSign } from 'lucide-react'; 
 
@@ -50,6 +50,7 @@ export default function ContributionList() {
             datePaid,
             createdAt,
             monthsCovered: Array.isArray(data.monthsCovered) ? data.monthsCovered.sort() : [], 
+            penaltyPaidAmount: data.penaltyPaidAmount || 0, // Ensure penaltyPaidAmount is always a number
          } as Contribution);
       });
       setContributions(fetchedContributions);
@@ -72,14 +73,20 @@ export default function ContributionList() {
       return false; // Not enough info
     }
     try {
-      const firstMonthCovered = parse(contrib.monthsCovered[0] + '-01', 'yyyy-MM-dd', new Date());
-      const paymentDate = new Date(contrib.datePaid);
-      const graceDay = 15; // e.g., payment due by 15th of the first month covered
+      // Parse the first month covered (e.g., "2024-07")
+      const firstMonthCoveredStr = contrib.monthsCovered[0];
+      const firstMonthDate = parse(firstMonthCoveredStr + '-01', 'yyyy-MM-dd', new Date());
+      
+      // Determine the due date: 7th of the month *following* the firstMonthDate
+      const monthFollowingFirstMonth = addMonths(startOfMonth(firstMonthDate), 1);
+      const dueDate = setDate(monthFollowingFirstMonth, 7); // 7th day of the next month
 
-      // Check if payment date is after the 15th of the first month covered
-      return paymentDate.getFullYear() > firstMonthCovered.getFullYear() ||
-             (paymentDate.getFullYear() === firstMonthCovered.getFullYear() && paymentDate.getMonth() > firstMonthCovered.getMonth()) ||
-             (paymentDate.getFullYear() === firstMonthCovered.getFullYear() && paymentDate.getMonth() === firstMonthCovered.getMonth() && paymentDate.getDate() > graceDay);
+      const paymentDate = new Date(contrib.datePaid);
+      
+      // Payment is late if it's after the due date (considering only day precision for simplicity here)
+      return paymentDate.getFullYear() > dueDate.getFullYear() ||
+             (paymentDate.getFullYear() === dueDate.getFullYear() && paymentDate.getMonth() > dueDate.getMonth()) ||
+             (paymentDate.getFullYear() === dueDate.getFullYear() && paymentDate.getMonth() === dueDate.getMonth() && paymentDate.getDate() > dueDate.getDate());
     } catch (e) {
       console.warn("Error parsing date for lateness check", e);
       return false;
@@ -208,4 +215,3 @@ export default function ContributionList() {
     </Card>
   );
 }
-
