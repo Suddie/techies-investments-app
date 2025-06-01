@@ -15,7 +15,7 @@ import { collection, query, where, orderBy, limit, Timestamp, getDocs, onSnapsho
 import { useFirebase } from '@/contexts/FirebaseProvider';
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
-import MilestoneProgressCard from "@/components/dashboard/MilestoneProgressCard"; // Added import
+import MilestoneProgressCard from "@/components/dashboard/MilestoneProgressCard";
 
 
 // Mock data for overdue members - replace with actual data fetching later
@@ -31,6 +31,7 @@ export default function DashboardPage() {
   const { settings } = useSettings();
   const { db } = useFirebase();
   const shareValue = 1000; 
+  const [isMounted, setIsMounted] = useState(false);
 
   const [totalFunds, setTotalFunds] = useState<number | null>(null);
   const [totalExpenditures, setTotalExpenditures] = useState<number | null>(null);
@@ -48,8 +49,14 @@ export default function DashboardPage() {
   const [userTotalContributions, setUserTotalContributions] = useState<number | null>(null);
   const [userTotalShares, setUserTotalShares] = useState<number | null>(null);
 
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
 
   useEffect(() => {
+    if (!isMounted || !db) return;
+
     // Fetch Total Funds (Latest Bank Balance)
     const fetchTotalFunds = async () => {
       setLoadingMetrics(prev => ({ ...prev, funds: true }));
@@ -134,6 +141,11 @@ export default function DashboardPage() {
         setUserTotalShares(0);
         setLoadingMetrics(prev => ({ ...prev, userSummary: false }));
       });
+    } else {
+        // If no user, set loading to false for user summary
+        setLoadingMetrics(prev => ({ ...prev, userSummary: false }));
+        setUserTotalContributions(0);
+        setUserTotalShares(0);
     }
 
 
@@ -142,7 +154,7 @@ export default function DashboardPage() {
       unsubscribeExpenses();
       unsubscribeUserContrib(); 
     };
-  }, [db, user, shareValue]);
+  }, [isMounted, db, user, shareValue]);
 
 
   return (
@@ -155,25 +167,25 @@ export default function DashboardPage() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
         <MetricCard
           title="Total Funds"
-          value={loadingMetrics.funds ? <Skeleton className="h-7 w-3/4" /> : `${settings.currencySymbol} ${(totalFunds ?? 0).toLocaleString()}`}
+          value={!isMounted || loadingMetrics.funds ? <Skeleton className="h-7 w-3/4" /> : `${settings.currencySymbol} ${(totalFunds ?? 0).toLocaleString()}`}
           icon={Landmark}
           description="Current available balance"
         />
         <MetricCard
           title="Monthly Expenditures"
-          value={loadingMetrics.expenditures ? <Skeleton className="h-7 w-3/4" /> : `${settings.currencySymbol} ${(totalExpenditures ?? 0).toLocaleString()}`}
+          value={!isMounted || loadingMetrics.expenditures ? <Skeleton className="h-7 w-3/4" /> : `${settings.currencySymbol} ${(totalExpenditures ?? 0).toLocaleString()}`}
           icon={TrendingDown}
           description="Expenses this month"
         />
         <MetricCard
           title="Monthly Contributions"
-          value={loadingMetrics.contributionsMonth ? <Skeleton className="h-7 w-3/4" /> : `${settings.currencySymbol} ${(totalContributionsMonth ?? 0).toLocaleString()}`}
+          value={!isMounted || loadingMetrics.contributionsMonth ? <Skeleton className="h-7 w-3/4" /> : `${settings.currencySymbol} ${(totalContributionsMonth ?? 0).toLocaleString()}`}
           icon={DollarSign}
           description="Contributions this month"
         />
          <MetricCard 
           title="Overdue Contributions"
-          value={overdueMembersCount.toString()} 
+          value={!isMounted ? <Skeleton className="h-7 w-1/4" /> : overdueMembersCount.toString()} 
           icon={UserX} 
           description="Members with pending payments"
         />
@@ -196,19 +208,19 @@ export default function DashboardPage() {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4"> 
           <MetricCard 
             title="Your Total Contributions" 
-            value={loadingMetrics.userSummary ? <Skeleton className="h-7 w-3/4" /> : `${settings.currencySymbol} ${(userTotalContributions ?? 0).toLocaleString()}`} 
+            value={!isMounted || loadingMetrics.userSummary ? <Skeleton className="h-7 w-3/4" /> : `${settings.currencySymbol} ${(userTotalContributions ?? 0).toLocaleString()}`} 
             icon={DollarSign} 
             description="All time contributions"
           />
           <MetricCard 
             title="Your Shares" 
-            value={loadingMetrics.userSummary ? <Skeleton className="h-7 w-1/2" /> : (userTotalShares ?? 0).toString()} 
+            value={!isMounted || loadingMetrics.userSummary ? <Skeleton className="h-7 w-1/2" /> : (userTotalShares ?? 0).toString()} 
             icon={BarChartBig} 
             description={`1 Share = ${settings.currencySymbol}${shareValue.toLocaleString()}`} 
           />
            <MetricCard 
             title="Pending Penalties" 
-            value={loadingMetrics.userSummary ? <Skeleton className="h-7 w-1/2" /> : `${settings.currencySymbol} ${(userProfile?.penaltyBalance || 0).toLocaleString()}`} 
+            value={!isMounted || loadingMetrics.userSummary ? <Skeleton className="h-7 w-1/2" /> : `${settings.currencySymbol} ${(userProfile?.penaltyBalance || 0).toLocaleString()}`} 
             icon={AlertTriangle}
             description="Your outstanding penalties"
           />
@@ -248,4 +260,3 @@ export default function DashboardPage() {
     </>
   );
 }
-

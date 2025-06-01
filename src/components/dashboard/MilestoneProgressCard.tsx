@@ -10,22 +10,30 @@ import { useFirebase } from '@/contexts/FirebaseProvider';
 import { useSettings } from '@/contexts/SettingsProvider';
 import type { Milestone } from '@/lib/types';
 import { collection, query, where, orderBy, limit, onSnapshot, Timestamp } from 'firebase/firestore';
+import { logger } from 'firebase-functions'; // Correct import for logger if used in client (though typically not)
 
 export default function MilestoneProgressCard() {
   const { db } = useFirebase();
   const { settings } = useSettings();
+  const [isMounted, setIsMounted] = useState(false);
   const [nextMilestone, setNextMilestone] = useState<Milestone | null>(null);
   const [availableFunds, setAvailableFunds] = useState<number | null>(null);
   const [loadingMilestone, setLoadingMilestone] = useState(true);
   const [loadingFunds, setLoadingFunds] = useState(true);
 
   useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isMounted || !db) return;
+
     setLoadingMilestone(true);
     const milestonesRef = collection(db, "milestones");
     const qMilestones = query(
       milestonesRef,
       where("status", "in", ["Not Started", "In Progress"]),
-      orderBy("targetDate", "asc"),
+      orderBy("targetDate", "asc"), // This query requires a composite index: milestones (status ASC, targetDate ASC)
       limit(1)
     );
 
@@ -33,13 +41,33 @@ export default function MilestoneProgressCard() {
       if (!snapshot.empty) {
         const doc = snapshot.docs[0];
         const data = doc.data();
+        
+        let validTargetDate: Date | undefined = undefined;
+        if (data.targetDate) {
+          if (data.targetDate instanceof Timestamp) {
+            validTargetDate = data.targetDate.toDate();
+          } else {
+            // Log if targetDate is not a Timestamp - it should always be.
+            console.warn(`Milestone ${doc.id} has targetDate that is not a Firestore Timestamp. Original:`, data.targetDate);
+            // Attempt conversion if it's a recognizable date string/number, otherwise leave undefined
+            const parsed = new Date(data.targetDate);
+            if (!isNaN(parsed.getTime())) {
+              validTargetDate = parsed;
+            }
+          }
+        }
+
         setNextMilestone({
           id: doc.id,
-          ...data,
-          targetDate: data.targetDate instanceof Timestamp ? data.targetDate.toDate() : (data.targetDate ? new Date(data.targetDate) : undefined),
+          name: data.name || "Unnamed Milestone",
+          description: data.description,
+          targetAmount: data.targetAmount || 0,
+          status: data.status || "Not Started",
+          projectId: data.projectId,
           actualCompletionDate: data.actualCompletionDate instanceof Timestamp ? data.actualCompletionDate.toDate() : (data.actualCompletionDate ? new Date(data.actualCompletionDate) : undefined),
           createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : (data.createdAt ? new Date(data.createdAt) : undefined),
           updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : (data.updatedAt ? new Date(data.updatedAt) : undefined),
+          targetDate: validTargetDate,
         } as Milestone);
       } else {
         setNextMilestone(null);
@@ -47,6 +75,8 @@ export default function MilestoneProgressCard() {
       setLoadingMilestone(false);
     }, (error) => {
       console.error("Error fetching next milestone:", error);
+      // It's possible an error here (e.g. missing index) could cause the "ca9" assertion.
+      // The Firebase console should show a link to create the index if that's the case for qMilestones.
       setLoadingMilestone(false);
     });
 
@@ -70,9 +100,9 @@ export default function MilestoneProgressCard() {
       unsubMilestones();
       unsubFunds();
     };
-  }, [db]);
+  }, [isMounted, db]);
 
-  const isLoading = loadingMilestone || loadingFunds;
+  const isLoading = !isMounted || loadingMilestone || loadingFunds;
 
   if (isLoading) {
     return (
@@ -112,7 +142,7 @@ export default function MilestoneProgressCard() {
 
   const targetAmount = nextMilestone.targetAmount || 0;
   const funds = availableFunds || 0;
-  const progressPercentage = targetAmount > 0 ? Math.min((funds / targetAmount) * 100, 100) : (funds > 0 ? 100 : 0); // If target is 0 but funds exist, show 100% for visual consistency.
+  const progressPercentage = targetAmount > 0 ? Math.min((funds / targetAmount) * 100, 100) : (funds > 0 ? 100 : 0);
   const fundsNeeded = Math.max(0, targetAmount - funds);
 
   return (
