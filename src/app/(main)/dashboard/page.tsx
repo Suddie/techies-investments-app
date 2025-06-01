@@ -11,7 +11,7 @@ import NotificationList from "@/components/notifications/NotificationList";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, orderBy, limit, Timestamp, getDocs, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, orderBy, limit, Timestamp, getDocs, onSnapshot, collectionGroup, sum } from 'firebase/firestore';
 import { useFirebase } from '@/contexts/FirebaseProvider';
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
@@ -25,24 +25,27 @@ const mockOverdueMembers = [
 
 
 export default function DashboardPage() {
-  const { userProfile } = useAuth();
+  const { user, userProfile } = useAuth(); // Added user
   const { settings } = useSettings();
   const { db } = useFirebase();
   const shareValue = 1000; 
 
   const [totalFunds, setTotalFunds] = useState<number | null>(null);
   const [totalExpenditures, setTotalExpenditures] = useState<number | null>(null);
-  const [totalContributions, setTotalContributions] = useState<number | null>(null);
+  const [totalContributionsMonth, setTotalContributionsMonth] = useState<number | null>(null); // Renamed for clarity
   const [loadingMetrics, setLoadingMetrics] = useState({
     funds: true,
     expenditures: true,
-    contributions: true,
+    contributionsMonth: true, // Renamed for clarity
+    userSummary: true, // Added for user personal summary
   });
 
   const projectCompletion = 65; // percentage (keep mock for now)
   const overdueMembersCount = mockOverdueMembers.length; // Use mock data for count
-  const userTotalContributions = 55000; 
-  const userTotalShares = userTotalContributions / shareValue;
+  
+  const [userTotalContributions, setUserTotalContributions] = useState<number | null>(null);
+  const [userTotalShares, setUserTotalShares] = useState<number | null>(null);
+
 
   useEffect(() => {
     // Fetch Total Funds (Latest Bank Balance)
@@ -56,11 +59,11 @@ export default function DashboardPage() {
           const latestBalanceDoc = querySnapshot.docs[0];
           setTotalFunds(latestBalanceDoc.data().closingBalance);
         } else {
-          setTotalFunds(0); // Default if no bank balances found
+          setTotalFunds(0); 
         }
       } catch (error) {
         console.error("Error fetching total funds:", error);
-        setTotalFunds(0); // Default on error
+        setTotalFunds(0); 
       } finally {
         setLoadingMetrics(prev => ({ ...prev, funds: false }));
       }
@@ -80,26 +83,26 @@ export default function DashboardPage() {
       where("datePaid", "<=", lastDayTimestamp)
     );
     const unsubscribeContrib = onSnapshot(contribQuery, (snapshot) => {
-      let sum = 0;
-      snapshot.forEach(doc => sum += doc.data().amount);
-      setTotalContributions(sum);
-      setLoadingMetrics(prev => ({ ...prev, contributions: false }));
+      let sumVal = 0;
+      snapshot.forEach(doc => sumVal += doc.data().amount);
+      setTotalContributionsMonth(sumVal);
+      setLoadingMetrics(prev => ({ ...prev, contributionsMonth: false }));
     }, (error) => {
         console.error("Error fetching monthly contributions:", error);
-        setTotalContributions(0);
-        setLoadingMetrics(prev => ({ ...prev, contributions: false }));
+        setTotalContributionsMonth(0);
+        setLoadingMetrics(prev => ({ ...prev, contributionsMonth: false }));
     });
     
     // Fetch Total Expenditures (Current Month)
     const expensesQuery = query(
       collection(db, "expenses"),
-      where("date", ">=", firstDayTimestamp), // Assuming 'date' in expenses is Firestore Timestamp
+      where("date", ">=", firstDayTimestamp), 
       where("date", "<=", lastDayTimestamp)
     );
     const unsubscribeExpenses = onSnapshot(expensesQuery, (snapshot) => {
-      let sum = 0;
-      snapshot.forEach(doc => sum += doc.data().totalAmount);
-      setTotalExpenditures(sum);
+      let sumVal = 0;
+      snapshot.forEach(doc => sumVal += doc.data().totalAmount);
+      setTotalExpenditures(sumVal);
       setLoadingMetrics(prev => ({ ...prev, expenditures: false }));
     }, (error) => {
         console.error("Error fetching monthly expenses:", error);
@@ -107,11 +110,41 @@ export default function DashboardPage() {
         setLoadingMetrics(prev => ({ ...prev, expenditures: false }));
     });
 
+    // Fetch User's Total Contributions for Personal Summary
+    if (user && user.uid) {
+      setLoadingMetrics(prev => ({ ...prev, userSummary: true }));
+      const userContribQuery = query(
+        collection(db, "contributions"),
+        where("userId", "==", user.uid)
+      );
+      const unsubscribeUserContrib = onSnapshot(userContribQuery, (snapshot) => {
+        let totalUserSum = 0;
+        snapshot.forEach(doc => {
+          totalUserSum += (doc.data().amount || 0);
+        });
+        setUserTotalContributions(totalUserSum);
+        setUserTotalShares(totalUserSum / shareValue);
+        setLoadingMetrics(prev => ({ ...prev, userSummary: false }));
+      }, (error) => {
+        console.error("Error fetching user's total contributions:", error);
+        setUserTotalContributions(0);
+        setUserTotalShares(0);
+        setLoadingMetrics(prev => ({ ...prev, userSummary: false }));
+      });
+      
+      return () => {
+        unsubscribeContrib();
+        unsubscribeExpenses();
+        unsubscribeUserContrib(); // Unsubscribe user contributions listener
+      };
+    }
+
+
     return () => {
       unsubscribeContrib();
       unsubscribeExpenses();
     };
-  }, [db]);
+  }, [db, user, shareValue]); // Added user and shareValue to dependencies
 
 
   return (
@@ -136,14 +169,14 @@ export default function DashboardPage() {
         />
         <MetricCard
           title="Monthly Contributions"
-          value={loadingMetrics.contributions ? <Skeleton className="h-7 w-3/4" /> : `${settings.currencySymbol} ${(totalContributions ?? 0).toLocaleString()}`}
+          value={loadingMetrics.contributionsMonth ? <Skeleton className="h-7 w-3/4" /> : `${settings.currencySymbol} ${(totalContributionsMonth ?? 0).toLocaleString()}`}
           icon={DollarSign}
           description="Contributions this month"
         />
          <MetricCard 
           title="Overdue Contributions"
-          value={overdueMembersCount.toString()}
-          icon={UserX} // Changed icon
+          value={overdueMembersCount.toString()} // Still mock
+          icon={UserX} 
           description="Members with pending payments"
         />
       </div>
@@ -162,20 +195,20 @@ export default function DashboardPage() {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4"> 
           <MetricCard 
             title="Your Total Contributions" 
-            value={`${settings.currencySymbol} ${userTotalContributions.toLocaleString()}`} 
+            value={loadingMetrics.userSummary ? <Skeleton className="h-7 w-3/4" /> : `${settings.currencySymbol} ${(userTotalContributions ?? 0).toLocaleString()}`} 
             icon={DollarSign} 
             description="All time contributions"
           />
           <MetricCard 
             title="Your Shares" 
-            value={userTotalShares.toString()} 
+            value={loadingMetrics.userSummary ? <Skeleton className="h-7 w-1/2" /> : (userTotalShares ?? 0).toString()} 
             icon={BarChartBig} 
             description={`1 Share = ${settings.currencySymbol}${shareValue.toLocaleString()}`} 
           />
            <MetricCard 
             title="Pending Penalties" 
-            value={`${settings.currencySymbol} ${(userProfile?.penaltyBalance || 0).toLocaleString()}`} 
-            icon={AlertTriangle} // Changed icon
+            value={loadingMetrics.userSummary ? <Skeleton className="h-7 w-1/2" /> : `${settings.currencySymbol} ${(userProfile?.penaltyBalance || 0).toLocaleString()}`} 
+            icon={AlertTriangle}
             description="Your outstanding penalties"
           />
         </div>
