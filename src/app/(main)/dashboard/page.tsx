@@ -15,6 +15,8 @@ import { collection, query, where, orderBy, limit, Timestamp, getDocs, onSnapsho
 import { useFirebase } from '@/contexts/FirebaseProvider';
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
+import MilestoneProgressCard from "@/components/dashboard/MilestoneProgressCard"; // Added import
+
 
 // Mock data for overdue members - replace with actual data fetching later
 const mockOverdueMembers = [
@@ -25,23 +27,23 @@ const mockOverdueMembers = [
 
 
 export default function DashboardPage() {
-  const { user, userProfile } = useAuth(); // Added user
+  const { user, userProfile } = useAuth(); 
   const { settings } = useSettings();
   const { db } = useFirebase();
   const shareValue = 1000; 
 
   const [totalFunds, setTotalFunds] = useState<number | null>(null);
   const [totalExpenditures, setTotalExpenditures] = useState<number | null>(null);
-  const [totalContributionsMonth, setTotalContributionsMonth] = useState<number | null>(null); // Renamed for clarity
+  const [totalContributionsMonth, setTotalContributionsMonth] = useState<number | null>(null); 
   const [loadingMetrics, setLoadingMetrics] = useState({
     funds: true,
     expenditures: true,
-    contributionsMonth: true, // Renamed for clarity
-    userSummary: true, // Added for user personal summary
+    contributionsMonth: true, 
+    userSummary: true, 
   });
 
-  const projectCompletion = 65; // percentage (keep mock for now)
-  const overdueMembersCount = mockOverdueMembers.length; // Use mock data for count
+  const projectCompletion = 65; 
+  const overdueMembersCount = mockOverdueMembers.length; 
   
   const [userTotalContributions, setUserTotalContributions] = useState<number | null>(null);
   const [userTotalShares, setUserTotalShares] = useState<number | null>(null);
@@ -111,13 +113,14 @@ export default function DashboardPage() {
     });
 
     // Fetch User's Total Contributions for Personal Summary
+    let unsubscribeUserContrib: () => void = () => {};
     if (user && user.uid) {
       setLoadingMetrics(prev => ({ ...prev, userSummary: true }));
       const userContribQuery = query(
         collection(db, "contributions"),
         where("userId", "==", user.uid)
       );
-      const unsubscribeUserContrib = onSnapshot(userContribQuery, (snapshot) => {
+      unsubscribeUserContrib = onSnapshot(userContribQuery, (snapshot) => {
         let totalUserSum = 0;
         snapshot.forEach(doc => {
           totalUserSum += (doc.data().amount || 0);
@@ -131,20 +134,15 @@ export default function DashboardPage() {
         setUserTotalShares(0);
         setLoadingMetrics(prev => ({ ...prev, userSummary: false }));
       });
-      
-      return () => {
-        unsubscribeContrib();
-        unsubscribeExpenses();
-        unsubscribeUserContrib(); // Unsubscribe user contributions listener
-      };
     }
 
 
     return () => {
       unsubscribeContrib();
       unsubscribeExpenses();
+      unsubscribeUserContrib(); 
     };
-  }, [db, user, shareValue]); // Added user and shareValue to dependencies
+  }, [db, user, shareValue]);
 
 
   return (
@@ -175,15 +173,18 @@ export default function DashboardPage() {
         />
          <MetricCard 
           title="Overdue Contributions"
-          value={overdueMembersCount.toString()} // Still mock
+          value={overdueMembersCount.toString()} 
           icon={UserX} 
           description="Members with pending payments"
         />
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        <div className="lg:col-span-2">
+      <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-3 mb-6">
+        <div className="lg:col-span-1"> 
            <ProjectCompletionChart percentage={projectCompletion} />
+        </div>
+        <div className="lg:col-span-1">
+           <MilestoneProgressCard />
         </div>
         <div className="lg:col-span-1">
           <NotificationList />
