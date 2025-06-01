@@ -4,7 +4,7 @@
 import MetricCard from "@/components/dashboard/MetricCard";
 import ProjectCompletionChart from "@/components/dashboard/ProjectCompletionChart";
 import PageHeader from "@/components/common/PageHeader";
-import { DollarSign, TrendingDown, Users, Landmark, BarChartBig, AlertTriangle, UserX } from "lucide-react"; 
+import { DollarSign, TrendingDown, Users, Landmark, BarChartBig, AlertTriangle, UserX, CircleDollarSign, ListChecks } from "lucide-react"; 
 import { useAuth } from "@/contexts/AuthProvider";
 import { useSettings } from "@/contexts/SettingsProvider";
 import NotificationList from "@/components/notifications/NotificationList";
@@ -16,39 +16,33 @@ import { useFirebase } from '@/contexts/FirebaseProvider';
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
 import MilestoneProgressCard from "@/components/dashboard/MilestoneProgressCard";
-
-
-// Mock data for overdue members - replace with actual data fetching later
-const mockOverdueMembers = [
-  { id: '1', name: 'John Banda', overdueMonths: 2, lastContribution: '2024-03-01' },
-  { id: '2', name: 'Alice Phiri', overdueMonths: 1, lastContribution: '2024-04-15' },
-  { id: '3', name: 'Bob Zimba', overdueMonths: 3, lastContribution: '2024-02-10' },
-];
+import type { UserProfile } from "@/lib/types";
 
 
 export default function DashboardPage() {
   const { user, userProfile } = useAuth(); 
   const { settings } = useSettings();
   const { db } = useFirebase();
-  const shareValue = 1000; 
+  const shareValue = settings.contributionMin || 1000; // Use contributionMin as share value or default
   const [isMounted, setIsMounted] = useState(false);
 
   const [totalFunds, setTotalFunds] = useState<number | null>(null);
   const [totalExpenditures, setTotalExpenditures] = useState<number | null>(null);
   const [totalContributionsMonth, setTotalContributionsMonth] = useState<number | null>(null); 
+  const [userTotalContributions, setUserTotalContributions] = useState<number | null>(null);
+  const [userTotalShares, setUserTotalShares] = useState<number | null>(null);
+  const [overdueMembers, setOverdueMembers] = useState<UserProfile[]>([]);
+
   const [loadingMetrics, setLoadingMetrics] = useState({
     funds: true,
     expenditures: true,
     contributionsMonth: true, 
     userSummary: true, 
+    overdueMembers: true,
   });
 
-  const projectCompletion = 65; 
-  const overdueMembersCount = mockOverdueMembers.length; 
+  const projectCompletion = 65; // Keep as mock for now
   
-  const [userTotalContributions, setUserTotalContributions] = useState<number | null>(null);
-  const [userTotalShares, setUserTotalShares] = useState<number | null>(null);
-
   useEffect(() => {
     setIsMounted(true);
   }, []);
@@ -56,6 +50,8 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!isMounted || !db) return;
+
+    let unsubscribes: (() => void)[] = [];
 
     // Fetch Total Funds (Latest Bank Balance)
     const fetchTotalFunds = async () => {
@@ -79,13 +75,13 @@ export default function DashboardPage() {
     };
     fetchTotalFunds();
 
-    // Fetch Total Contributions (Current Month)
     const today = new Date();
     const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
     const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
     const firstDayTimestamp = Timestamp.fromDate(firstDayOfMonth);
     const lastDayTimestamp = Timestamp.fromDate(lastDayOfMonth);
 
+    // Fetch Total Contributions (Current Month)
     const contribQuery = query(
       collection(db, "contributions"),
       where("datePaid", ">=", firstDayTimestamp),
@@ -101,6 +97,7 @@ export default function DashboardPage() {
         setTotalContributionsMonth(0);
         setLoadingMetrics(prev => ({ ...prev, contributionsMonth: false }));
     });
+    unsubscribes.push(unsubscribeContrib);
     
     // Fetch Total Expenditures (Current Month)
     const expensesQuery = query(
@@ -118,22 +115,22 @@ export default function DashboardPage() {
         setTotalExpenditures(0);
         setLoadingMetrics(prev => ({ ...prev, expenditures: false }));
     });
+    unsubscribes.push(unsubscribeExpenses);
 
     // Fetch User's Total Contributions for Personal Summary
-    let unsubscribeUserContrib: () => void = () => {};
     if (user && user.uid) {
       setLoadingMetrics(prev => ({ ...prev, userSummary: true }));
       const userContribQuery = query(
         collection(db, "contributions"),
         where("userId", "==", user.uid)
       );
-      unsubscribeUserContrib = onSnapshot(userContribQuery, (snapshot) => {
+      const unsubscribeUserContrib = onSnapshot(userContribQuery, (snapshot) => {
         let totalUserSum = 0;
         snapshot.forEach(doc => {
           totalUserSum += (doc.data().amount || 0);
         });
         setUserTotalContributions(totalUserSum);
-        setUserTotalShares(totalUserSum / shareValue);
+        setUserTotalShares(shareValue > 0 ? totalUserSum / shareValue : 0);
         setLoadingMetrics(prev => ({ ...prev, userSummary: false }));
       }, (error) => {
         console.error("Error fetching user's total contributions:", error);
@@ -141,18 +138,38 @@ export default function DashboardPage() {
         setUserTotalShares(0);
         setLoadingMetrics(prev => ({ ...prev, userSummary: false }));
       });
+      unsubscribes.push(unsubscribeUserContrib);
     } else {
-        // If no user, set loading to false for user summary
         setLoadingMetrics(prev => ({ ...prev, userSummary: false }));
         setUserTotalContributions(0);
         setUserTotalShares(0);
     }
 
+    // Fetch Overdue Members (Active users with penaltyBalance > 0)
+    setLoadingMetrics(prev => ({ ...prev, overdueMembers: true }));
+    const overdueMembersQuery = query(
+        collection(db, "users"),
+        where("status", "==", "Active"),
+        where("penaltyBalance", ">", 0),
+        orderBy("penaltyBalance", "desc") // Optional: order by highest penalty
+    );
+    const unsubscribeOverdueMembers = onSnapshot(overdueMembersQuery, (snapshot) => {
+        const members: UserProfile[] = [];
+        snapshot.forEach(doc => {
+            members.push({ uid: doc.id, ...doc.data() } as UserProfile);
+        });
+        setOverdueMembers(members);
+        setLoadingMetrics(prev => ({ ...prev, overdueMembers: false }));
+    }, (error) => {
+        console.error("Error fetching overdue members:", error);
+        setOverdueMembers([]);
+        setLoadingMetrics(prev => ({ ...prev, overdueMembers: false }));
+    });
+    unsubscribes.push(unsubscribeOverdueMembers);
+
 
     return () => {
-      unsubscribeContrib();
-      unsubscribeExpenses();
-      unsubscribeUserContrib(); 
+      unsubscribes.forEach(unsub => unsub());
     };
   }, [isMounted, db, user, shareValue]);
 
@@ -180,12 +197,12 @@ export default function DashboardPage() {
         <MetricCard
           title="Monthly Contributions"
           value={!isMounted || loadingMetrics.contributionsMonth ? <Skeleton className="h-7 w-3/4" /> : `${settings.currencySymbol} ${(totalContributionsMonth ?? 0).toLocaleString()}`}
-          icon={DollarSign}
+          icon={CircleDollarSign}
           description="Contributions this month"
         />
          <MetricCard 
           title="Overdue Contributions"
-          value={!isMounted ? <Skeleton className="h-7 w-1/4" /> : overdueMembersCount.toString()} 
+          value={!isMounted || loadingMetrics.overdueMembers ? <Skeleton className="h-7 w-1/4" /> : overdueMembers.length.toString()} 
           icon={UserX} 
           description="Members with pending payments"
         />
@@ -214,9 +231,9 @@ export default function DashboardPage() {
           />
           <MetricCard 
             title="Your Shares" 
-            value={!isMounted || loadingMetrics.userSummary ? <Skeleton className="h-7 w-1/2" /> : (userTotalShares ?? 0).toString()} 
+            value={!isMounted || loadingMetrics.userSummary ? <Skeleton className="h-7 w-1/2" /> : (userTotalShares ?? 0).toFixed(2)} 
             icon={BarChartBig} 
-            description={`1 Share = ${settings.currencySymbol}${shareValue.toLocaleString()}`} 
+            description={shareValue > 0 ? `1 Share = ${settings.currencySymbol}${shareValue.toLocaleString()}` : "Share value not set"}
           />
            <MetricCard 
             title="Pending Penalties" 
@@ -224,39 +241,60 @@ export default function DashboardPage() {
             icon={AlertTriangle}
             description="Your outstanding penalties"
           />
+          <MetricCard
+            title="Next Contribution Due"
+            value={!isMounted ? <Skeleton className="h-7 w-1/2" /> : "August 7th, 2024"} // Placeholder, needs logic
+            icon={ListChecks}
+            description="Estimated next payment"
+          />
         </div>
       </div>
 
       <Card className="mt-6">
         <CardHeader>
-            <CardTitle>Members with Overdue Contributions (Mock Data)</CardTitle>
-            <CardDescription>This is a placeholder. Real data requires penalty system implementation.</CardDescription>
+            <CardTitle>Members with Outstanding Penalties</CardTitle>
+            <CardDescription>
+              List of active members with a penalty balance greater than zero. 
+              This list relies on the 'automatedPenaltyGeneration' Cloud Function for accuracy.
+            </CardDescription>
         </CardHeader>
         <CardContent>
-            {mockOverdueMembers.length > 0 ? (
+            {loadingMetrics.overdueMembers ? (
+                 <div className="space-y-2">
+                    <Skeleton className="h-10 w-full" />
+                    <Skeleton className="h-10 w-full" />
+                    <Skeleton className="h-10 w-full" />
+                 </div>
+            ) : overdueMembers.length > 0 ? (
                 <Table>
                     <TableHeader>
                         <TableRow>
                             <TableHead>Member Name</TableHead>
-                            <TableHead className="text-center">Overdue Months</TableHead>
-                            <TableHead>Last Contribution Date</TableHead>
+                            <TableHead className="text-right">Outstanding Penalty ({settings.currencySymbol})</TableHead>
+                            <TableHead className="hidden md:table-cell">Email</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {mockOverdueMembers.map(member => (
-                            <TableRow key={member.id} className="hover:bg-muted/50">
+                        {overdueMembers.map(member => (
+                            <TableRow key={member.uid} className="hover:bg-muted/50">
                                 <TableCell className="font-medium">{member.name}</TableCell>
-                                <TableCell className="text-center">{member.overdueMonths}</TableCell>
-                                <TableCell>{member.lastContribution ? format(new Date(member.lastContribution), "PP") : 'N/A'}</TableCell>
+                                <TableCell className="text-right text-destructive font-semibold">
+                                    {(member.penaltyBalance || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                </TableCell>
+                                <TableCell className="hidden md:table-cell text-xs text-muted-foreground">{member.email}</TableCell>
                             </TableRow>
                         ))}
                     </TableBody>
                 </Table>
             ) : (
-                <p className="text-muted-foreground text-center py-4">No members currently have overdue contributions.</p>
+                <p className="text-muted-foreground text-center py-4">
+                    <Users className="mx-auto h-8 w-8 mb-2 text-green-500" />
+                    No members currently have outstanding penalties.
+                </p>
             )}
         </CardContent>
       </Card>
     </>
   );
 }
+
