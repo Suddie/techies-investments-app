@@ -58,13 +58,24 @@ export interface GlobalSettings {
   financialYearStart?: string; 
 }
 
+export type NotificationType = 'reminder' | 'warning' | 'alert' | 'info' | 'success' | 'error';
+
 export interface NotificationMessage {
   id: string;
   userId: string | 'all'; 
   message: string;
-  type: 'reminder' | 'warning' | 'alert' | 'info' | 'success' | 'error';
+  type: NotificationType;
   timestamp: Date;
   isRead: boolean;
+  relatedLink?: string;
+}
+
+export interface ManualNotificationFormValues {
+  targetType: 'all' | 'specific';
+  targetUserId?: string; // For 'specific' user, store UID here
+  targetUserEmail?: string; // For looking up specific user
+  message: string;
+  type: NotificationType;
   relatedLink?: string;
 }
 
@@ -318,3 +329,4 @@ export interface ProfessionalPaymentFormValues {
 //   taxPIN?: string; // This is separate from member TPINs
 //   // other relevant details
 // }
+

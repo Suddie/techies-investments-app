@@ -14,7 +14,8 @@ import {
   Briefcase,
   FileBarChart, 
   Settings as SettingsIcon, 
-  Bell // Added Bell for notifications
+  Bell,
+  MessageSquarePlus // Added for Manage Notifications
 } from 'lucide-react';
 
 export const ROLES: Record<UserRole, { name: UserRole; accessLevel: AccessLevel }> = {
@@ -55,7 +56,7 @@ export const APP_NAME = "Techies Investments App";
 
 export const NAVIGATION_LINKS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, adminOnly: false, requiredAccessLevel: 3 },
-  { href: "/notifications", label: "Notifications", icon: Bell, adminOnly: false, requiredAccessLevel: 3 }, // Added Notifications link
+  { href: "/notifications", label: "Notifications", icon: Bell, adminOnly: false, requiredAccessLevel: 3 },
   { href: "/contributions", label: "Contributions", icon: HandCoins, adminOnly: false, requiredAccessLevel: 3 },
   { href: "/expenses", label: "Expenses", icon: CreditCard, adminOnly: false, requiredAccessLevel: 3 },
   { href: "/milestones", label: "Project Milestones", icon: ListChecks, adminOnly: false, requiredAccessLevel: 3 },
@@ -66,9 +67,9 @@ export const NAVIGATION_LINKS = [
   { href: "/tax-summary", label: "Tax Summary", icon: FileBarChart, adminOnly: false, requiredAccessLevel: 2 }, 
   { href: "/audit-log", label: "Audit Log", icon: History, adminOnly: false, requiredAccessLevel: 3 },
   { href: "/bank-management", label: "Bank Management", icon: Landmark, adminOnly: false, requiredAccessLevel: 2 },
-  // Admin specific links can be grouped or managed by accessLevel directly
-  // { href: "/admin/users", label: "User Management", icon: Users, adminOnly: true, requiredAccessLevel: 1 },
-  // { href: "/admin/settings", label: "App Settings", icon: SettingsIcon, adminOnly: true, requiredAccessLevel: 1 },
+  { href: "/admin/users", label: "User Management", icon: Users, adminOnly: true, requiredAccessLevel: 1 },
+  { href: "/admin/manage-notifications", label: "Manage Notifications", icon: MessageSquarePlus, adminOnly: true, requiredAccessLevel: 1 },
+  { href: "/admin/settings", label: "App Settings", icon: SettingsIcon, adminOnly: true, requiredAccessLevel: 1 },
 ];
 
     
