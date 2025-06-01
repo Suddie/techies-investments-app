@@ -23,13 +23,16 @@ import { useSettings } from "@/contexts/SettingsProvider";
 import { useFirebase } from "@/contexts/FirebaseProvider";
 import { doc, updateDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
+import { httpsCallable } from "firebase/functions";
 import { useToast } from "@/hooks/use-toast";
 import React, { useEffect, useState, useRef } from "react";
 import ProtectedRoute from "@/components/common/ProtectedRoute";
 import Image from "next/image";
-import { UploadCloud, XCircle } from "lucide-react";
+import { UploadCloud, XCircle, Download, Loader2 } from "lucide-react";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch"; // Added Switch import
+import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
 
 const generalSettingsSchema = z.object({
   appName: z.string().min(3, "App name must be at least 3 characters.").max(50, "App name must be at most 50 characters."),
@@ -38,7 +41,7 @@ const generalSettingsSchema = z.object({
   invoiceAddress: z.string().min(5, "Address is required.").max(200, "Address is too long.").optional().or(z.literal('')),
   invoiceContact: z.string().min(5, "Contact info is required.").max(100, "Contact info is too long.").optional().or(z.literal('')),
   companyTaxPIN: z.string().min(5, "Tax PIN is required.").max(30, "Tax PIN is too long.").optional().or(z.literal('')),
-  useAppLogoForInvoice: z.boolean().optional(), // Added
+  useAppLogoForInvoice: z.boolean().optional(),
 });
 
 type GeneralSettingsFormValues = z.infer<typeof generalSettingsSchema>;
@@ -51,10 +54,25 @@ const financialSettingsSchema = z.object({
 
 type FinancialSettingsFormValues = z.infer<typeof financialSettingsSchema>;
 
+const allowedCollectionsForExport = [
+  { value: 'users', label: 'Users' },
+  { value: 'contributions', label: 'Contributions' },
+  { value: 'expenses', label: 'Expenses' },
+  { value: 'tenants', label: 'Tenants' },
+  { value: 'professionals', label: 'Professionals' },
+  { value: 'milestones', label: 'Milestones' },
+  { value: 'stockItems', label: 'Stock Items' },
+  { value: 'bankBalances', label: 'Bank Balances' },
+  { value: 'rentInvoices', label: 'Rent Invoices' },
+  { value: 'auditLog', label: 'Audit Log' },
+  { value: 'penalties', label: 'Penalties (if collection exists)' },
+  // Add other collections as needed
+];
+
 
 export default function AdminSettingsPage() {
   const { settings, loading: settingsLoading } = useSettings();
-  const { db, storage } = useFirebase();
+  const { db, storage, functions } = useFirebase(); // Added functions
   const { toast } = useToast();
   const [isSavingGeneral, setIsSavingGeneral] = useState(false);
   const [isSavingFinancial, setIsSavingFinancial] = useState(false);
@@ -68,6 +86,11 @@ export default function AdminSettingsPage() {
   const [invoiceLogoPreview, setInvoiceLogoPreview] = useState<string | null>(settings.invoiceLogoUrl);
   const [isUploadingInvoiceLogo, setIsUploadingInvoiceLogo] = useState(false);
   const invoiceLogoFileInputRef = useRef<HTMLInputElement>(null);
+
+  // State for Data Export
+  const [selectedCollection, setSelectedCollection] = useState<string | undefined>(undefined);
+  const [selectedFormat, setSelectedFormat] = useState<'json' | 'csv' | undefined>(undefined);
+  const [isExporting, setIsExporting] = useState(false);
 
 
   const generalForm = useForm<GeneralSettingsFormValues>({
@@ -249,6 +272,36 @@ export default function AdminSettingsPage() {
     }
   };
 
+  const handleExportData = async () => {
+    if (!selectedCollection || !selectedFormat) {
+      toast({ title: "Missing Selection", description: "Please select a collection and format to export.", variant: "destructive" });
+      return;
+    }
+    setIsExporting(true);
+    try {
+      const adminExportDataCallable = httpsCallable(functions, 'adminExportData');
+      const result = await adminExportDataCallable({ collectionName: selectedCollection, format: selectedFormat });
+      
+      const { data: fileContent, fileName } = result.data as { data: string; fileName: string };
+
+      const blob = new Blob([fileContent], { type: selectedFormat === 'json' ? 'application/json' : 'text/csv' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(link.href);
+
+      toast({ title: "Export Successful", description: `${fileName} has started downloading.` });
+    } catch (error: any) {
+      console.error("Error exporting data:", error);
+      toast({ title: "Export Error", description: error.message || "Could not export data.", variant: "destructive" });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
 
   return (
     <ProtectedRoute adminOnly={true} requiredAccessLevel={1}>
@@ -257,9 +310,10 @@ export default function AdminSettingsPage() {
         description="Manage global application settings and configurations."
       />
       <Tabs defaultValue="general" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 md:w-[400px] mb-6">
+        <TabsList className="grid w-full grid-cols-3 md:w-[600px] mb-6">
           <TabsTrigger value="general">General & Branding</TabsTrigger>
           <TabsTrigger value="financial">Financial</TabsTrigger>
+          <TabsTrigger value="data-export">Data Export</TabsTrigger>
         </TabsList>
 
         <TabsContent value="general">
@@ -380,6 +434,7 @@ export default function AdminSettingsPage() {
                         )}
                       />
                       <Button type="submit" disabled={isSavingGeneral || settingsLoading}>
+                        {isSavingGeneral ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                         {isSavingGeneral ? "Saving..." : "Save Details"}
                       </Button>
                     </form>
@@ -422,7 +477,7 @@ export default function AdminSettingsPage() {
                       </div>
                       <div className="flex gap-2 mt-2">
                         <Button onClick={() => handleUploadLogo('app')} disabled={isUploadingAppLogo || !selectedAppLogoFile} className="flex-1">
-                          <UploadCloud className="mr-2 h-4 w-4" />
+                          {isUploadingAppLogo ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UploadCloud className="mr-2 h-4 w-4" />}
                           {isUploadingAppLogo ? "Uploading..." : "Upload App Logo"}
                         </Button>
                         {settings.logoUrl && (
@@ -462,7 +517,7 @@ export default function AdminSettingsPage() {
                       </div>
                       <div className="flex gap-2 mt-2">
                         <Button onClick={() => handleUploadLogo('invoice')} disabled={isUploadingInvoiceLogo || !selectedInvoiceLogoFile} className="flex-1">
-                          <UploadCloud className="mr-2 h-4 w-4" />
+                          {isUploadingInvoiceLogo ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UploadCloud className="mr-2 h-4 w-4" />}
                           {isUploadingInvoiceLogo ? "Uploading..." : "Upload Invoice Logo"}
                         </Button>
                         {settings.invoiceLogoUrl && (
@@ -535,6 +590,7 @@ export default function AdminSettingsPage() {
                       )}
                     />
                     <Button type="submit" disabled={isSavingFinancial || settingsLoading}>
+                      {isSavingFinancial ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                       {isSavingFinancial ? "Saving..." : "Save Financial Settings"}
                     </Button>
                   </form>
@@ -543,7 +599,62 @@ export default function AdminSettingsPage() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="data-export">
+          <Card>
+            <CardHeader>
+              <CardTitle>Data Export</CardTitle>
+              <CardDescription>Export collections from Firestore to JSON or CSV format.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                <div className="space-y-1.5">
+                  <Label htmlFor="export-collection">Collection</Label>
+                  <Select onValueChange={setSelectedCollection} value={selectedCollection}>
+                    <SelectTrigger id="export-collection">
+                      <SelectValue placeholder="Select collection" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {allowedCollectionsForExport.map((collection) => (
+                        <SelectItem key={collection.value} value={collection.value}>
+                          {collection.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="export-format">Format</Label>
+                  <Select onValueChange={(value) => setSelectedFormat(value as 'json' | 'csv')} value={selectedFormat}>
+                    <SelectTrigger id="export-format">
+                      <SelectValue placeholder="Select format" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="json">JSON</SelectItem>
+                      <SelectItem value="csv">CSV</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <Button
+                onClick={handleExportData}
+                disabled={isExporting || !selectedCollection || !selectedFormat || !functions}
+                className="w-full md:w-auto"
+              >
+                {isExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                {isExporting ? "Exporting..." : "Export Data"}
+              </Button>
+               <FormDescription>
+                Note: Exporting large collections might take some time. Ensure your Cloud Function for export (`adminExportData`) is deployed and configured correctly, including necessary permissions and runtime options (e.g., memory, timeout) for large datasets.
+              </FormDescription>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
       </Tabs>
     </ProtectedRoute>
   );
 }
+
+
+    
