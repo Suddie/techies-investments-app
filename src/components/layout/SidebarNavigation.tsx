@@ -36,7 +36,7 @@ export default function SidebarNavigation() {
           <span>{settingsLoading ? "Loading..." : settings.appName}</span>
         </Link>
       </div>
-      <div className="flex-1">
+      <div className="flex-1 bg-sidebar"> {/* Added bg-sidebar here */}
         <nav className="grid items-start px-2 text-sm font-medium lg:px-4 py-4">
           {filteredNavLinks.map((link) => {
             const IconComponent = link.icon as React.ElementType; // Cast to React.ElementType
