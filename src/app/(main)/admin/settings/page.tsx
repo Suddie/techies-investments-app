@@ -644,9 +644,9 @@ export default function AdminSettingsPage() {
                 {isExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
                 {isExporting ? "Exporting..." : "Export Data"}
               </Button>
-               <FormDescription>
+               <p className="text-sm text-muted-foreground mt-2">
                 Note: Exporting large collections might take some time. Ensure your Cloud Function for export (`adminExportData`) is deployed and configured correctly, including necessary permissions and runtime options (e.g., memory, timeout) for large datasets.
-              </FormDescription>
+              </p>
             </CardContent>
           </Card>
         </TabsContent>
@@ -655,6 +655,3 @@ export default function AdminSettingsPage() {
     </ProtectedRoute>
   );
 }
-
-
-    
