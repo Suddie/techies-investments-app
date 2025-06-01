@@ -4,7 +4,7 @@
 import MetricCard from "@/components/dashboard/MetricCard";
 import ProjectCompletionChart from "@/components/dashboard/ProjectCompletionChart";
 import PageHeader from "@/components/common/PageHeader";
-import { DollarSign, TrendingDown, Users, Landmark, BarChartBig, AlertTriangle, UserX, CircleDollarSign, ListChecks } from "lucide-react"; 
+import { DollarSign, TrendingDown, Users, Landmark, BarChartBig, AlertTriangle, UserX, CircleDollarSign } from "lucide-react"; 
 import { useAuth } from "@/contexts/AuthProvider";
 import { useSettings } from "@/contexts/SettingsProvider";
 import NotificationList from "@/components/notifications/NotificationList";
@@ -23,7 +23,7 @@ export default function DashboardPage() {
   const { user, userProfile } = useAuth(); 
   const { settings } = useSettings();
   const { db } = useFirebase();
-  const shareValue = settings.contributionMin || 1000; // Use contributionMin as share value or default
+  const shareValue = settings.contributionMin || 1000; 
   const [isMounted, setIsMounted] = useState(false);
 
   const [totalFunds, setTotalFunds] = useState<number | null>(null);
@@ -41,7 +41,7 @@ export default function DashboardPage() {
     overdueMembers: true,
   });
 
-  const projectCompletion = 65; // Keep as mock for now
+  const projectCompletion = 65; 
   
   useEffect(() => {
     setIsMounted(true);
@@ -151,7 +151,7 @@ export default function DashboardPage() {
         collection(db, "users"),
         where("status", "==", "Active"),
         where("penaltyBalance", ">", 0),
-        orderBy("penaltyBalance", "desc") // Optional: order by highest penalty
+        orderBy("penaltyBalance", "desc") 
     );
     const unsubscribeOverdueMembers = onSnapshot(overdueMembersQuery, (snapshot) => {
         const members: UserProfile[] = [];
@@ -222,7 +222,7 @@ export default function DashboardPage() {
       
        <div className="mt-6">
         <h3 className="text-xl font-semibold mb-3">Your Personal Summary</h3>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4"> 
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3"> {/* Adjusted grid to lg:grid-cols-3 */}
           <MetricCard 
             title="Your Total Contributions" 
             value={!isMounted || loadingMetrics.userSummary ? <Skeleton className="h-7 w-3/4" /> : `${settings.currencySymbol} ${(userTotalContributions ?? 0).toLocaleString()}`} 
@@ -240,12 +240,6 @@ export default function DashboardPage() {
             value={!isMounted || loadingMetrics.userSummary ? <Skeleton className="h-7 w-1/2" /> : `${settings.currencySymbol} ${(userProfile?.penaltyBalance || 0).toLocaleString()}`} 
             icon={AlertTriangle}
             description="Your outstanding penalties"
-          />
-          <MetricCard
-            title="Next Contribution Due"
-            value={!isMounted ? <Skeleton className="h-7 w-1/2" /> : "August 7th, 2024"} // Placeholder, needs logic
-            icon={ListChecks}
-            description="Estimated next payment"
           />
         </div>
       </div>
