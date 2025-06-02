@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -20,7 +21,7 @@ import { doc, updateDoc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertTriangle, CheckCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle, ArrowLeft } from "lucide-react";
 
 const formSchema = z.object({
   newPassword: z.string().min(6, { message: "Password must be at least 6 characters." }),
@@ -72,10 +73,24 @@ export default function ChangePasswordForm() {
     }
   }
 
+  const handleCancel = () => {
+    // If user was forced to change password, going "back" to profile might not be ideal
+    // as they might be in a loop. Dashboard is a safer bet if they cancel a forced change.
+    // However, if they navigated willingly from profile, going back to profile is fine.
+    // For simplicity now, we'll go to dashboard if it was required, profile otherwise.
+    if (userProfile?.requiresPasswordChange) {
+        // Check if they somehow bypassed the initial dashboard redirect. If so, send them there.
+        // Or if they are coming from login direct to change password.
+        router.push('/dashboard'); 
+    } else {
+        router.push('/profile');
+    }
+  };
+
   return (
     <div className="w-full rounded-lg border bg-card text-card-foreground shadow-lg p-6 md:p-8">
       <h2 className="text-2xl font-semibold text-center mb-2 text-foreground">Change Your Password</h2>
-      {userProfile?.requiresPasswordChange && (
+      {userProfile?.requiresPasswordChange && !success && (
         <p className="text-sm text-muted-foreground text-center mb-6">
           Please set a new password to continue.
         </p>
@@ -122,9 +137,15 @@ export default function ChangePasswordForm() {
               </FormItem>
             )}
           />
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Updating..." : "Change Password"}
-          </Button>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <Button type="button" variant="outline" onClick={handleCancel} className="w-full sm:w-auto" disabled={loading}>
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Cancel
+            </Button>
+            <Button type="submit" className="w-full flex-grow" disabled={loading || !!success}>
+                {loading ? "Updating..." : "Change Password"}
+            </Button>
+          </div>
         </form>
       </Form>
     </div>
