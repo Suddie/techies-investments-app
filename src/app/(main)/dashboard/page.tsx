@@ -23,7 +23,7 @@ export default function DashboardPage() {
   const { user, userProfile } = useAuth();
   const { settings } = useSettings();
   const { db } = useFirebase();
-  const shareValue = settings.contributionMin || 1000;
+  const shareValue = 1; // Share value is now fixed at 1
   const [isMounted, setIsMounted] = useState(false);
 
   const [totalFunds, setTotalFunds] = useState<number | null>(null);
@@ -196,7 +196,7 @@ export default function DashboardPage() {
     return () => {
       unsubscribes.forEach(unsub => unsub());
     };
-  }, [isMounted, db, user, shareValue]);
+  }, [isMounted, db, user, settings.currencySymbol]); // Removed shareValue from dependencies as it's constant
 
 
   return (
@@ -264,9 +264,9 @@ export default function DashboardPage() {
           />
           <MetricCard
             title="Your Shares"
-            value={!isMounted || loadingMetrics.userSummary ? <Skeleton className="h-7 w-1/2" /> : (userTotalShares ?? 0).toFixed(2)}
+            value={!isMounted || loadingMetrics.userSummary ? <Skeleton className="h-7 w-1/2" /> : (userTotalShares ?? 0).toLocaleString()}
             icon={BarChartBig}
-            description={shareValue > 0 ? `1 Share = ${settings.currencySymbol}${shareValue.toLocaleString()}` : "Share value not set"}
+            description={`1 Share = ${settings.currencySymbol}${shareValue.toLocaleString()}`}
           />
            <MetricCard
             title="Pending Penalties"
@@ -325,3 +325,5 @@ export default function DashboardPage() {
   );
 }
 
+
+    
