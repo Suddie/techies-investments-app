@@ -8,21 +8,26 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { CalendarIcon, Download, FileText, Image as ImageIcon } from 'lucide-react';
+import { CalendarIcon, Download, FileText, Image as ImageIcon, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import type { DateRange } from 'react-day-picker';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
-import ReportView, { type ReportData } from './ReportView'; // Assuming ReportView component
+import ReportView, { type ReportData } from './ReportView';
 import { useSettings } from '@/contexts/SettingsProvider';
-import { cn } from "@/lib/utils"; // Added import
+import { cn } from "@/lib/utils";
+import { useAuth } from '@/contexts/AuthProvider'; // Added
+import { useFirebase } from '@/contexts/FirebaseProvider'; // Added
+import { collection, query, where, getDocs, Timestamp, orderBy } from 'firebase/firestore'; // Added
+import { useToast } from '@/hooks/use-toast'; // Added
+import type { Contribution } from '@/lib/types'; // Added
 
 type ReportType = 'member_statement' | 'financial_activity' | 'contribution_details' | 'penalty_details' | 'expense_details';
 
 const reportTypes: { value: ReportType; label: string }[] = [
-  { value: 'member_statement', label: 'Member Statement' },
-  { value: 'financial_activity', label: 'Monthly Financial Activity' },
-  { value: 'contribution_details', label: 'Contribution Details' },
+  { value: 'member_statement', label: 'Member Statement (My Data)' },
+  { value: 'financial_activity', label: 'Monthly Financial Activity (Mock)' },
+  { value: 'contribution_details', label: 'Contribution Details (Mock)' },
   // Add more report types here
 ];
 
@@ -33,32 +38,133 @@ export default function ReportGenerator() {
   const [loading, setLoading] = useState(false);
   const reportViewRef = useRef<HTMLDivElement>(null);
   const { settings } = useSettings();
+  const { userProfile } = useAuth(); // Added
+  const { db } = useFirebase(); // Added
+  const { toast } = useToast(); // Added
 
-  const handleGenerateReport = () => {
+  const handleGenerateReport = async () => {
     if (!reportType) {
-      alert("Please select a report type.");
+      toast({ title: "Selection Missing", description: "Please select a report type.", variant: "destructive" });
       return;
     }
     setLoading(true);
-    // Simulate fetching data
-    setTimeout(() => {
+    setGeneratedReportData(null);
+
+    if (reportType === 'member_statement') {
+      if (!userProfile) {
+        toast({ title: "Authentication Error", description: "You must be logged in to generate a member statement.", variant: "destructive" });
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const contributionsRef = collection(db, "contributions");
+        const qConstraints = [
+          where("userId", "==", userProfile.uid),
+          orderBy("datePaid", "asc")
+        ];
+
+        if (dateRange?.from) {
+          qConstraints.unshift(where("datePaid", ">=", Timestamp.fromDate(dateRange.from)));
+        }
+        if (dateRange?.to) {
+          // To include the whole day, set time to end of day for 'to' date
+          const toDate = new Date(dateRange.to);
+          toDate.setHours(23, 59, 59, 999);
+          qConstraints.unshift(where("datePaid", "<=", Timestamp.fromDate(toDate)));
+        }
+        
+        const contributionsQuery = query(contributionsRef, ...qConstraints);
+        const contribSnap = await getDocs(contributionsQuery);
+        
+        const statementItems: any[] = [];
+        let runningBalance = 0; // Simplified running balance, starts at 0 for the period
+
+        contribSnap.forEach(doc => {
+          const contrib = doc.data() as Contribution;
+          const datePaid = contrib.datePaid instanceof Timestamp ? contrib.datePaid.toDate() : new Date(contrib.datePaid);
+          
+          if (contrib.amount > 0) {
+            runningBalance += contrib.amount;
+            statementItems.push({
+              date: format(datePaid, "yyyy-MM-dd"),
+              description: "Contribution Received",
+              debit: '',
+              credit: contrib.amount,
+              balance: runningBalance 
+            });
+          }
+
+          if (contrib.penaltyPaidAmount && contrib.penaltyPaidAmount > 0) {
+            runningBalance += contrib.penaltyPaidAmount; // Assuming penalty paid also increases member's "credit" or reduces liability
+            statementItems.push({
+              date: format(datePaid, "yyyy-MM-dd"),
+              description: "Penalty Payment Received",
+              debit: '',
+              credit: contrib.penaltyPaidAmount,
+              balance: runningBalance
+            });
+          }
+        });
+        
+        // Placeholder for fetching incurred penalties (Debits) - Future enhancement
+        // For example, if you have a 'penalties' collection:
+        // const penaltiesQuery = query(collection(db, "penalties"), where("userId", "==", userProfile.uid), ...dateFilters);
+        // const penaltySnap = await getDocs(penaltiesQuery);
+        // penaltySnap.forEach(doc => { ... add to statementItems as debit, update runningBalance ... });
+        // statementItems.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()); // Re-sort if mixing sources
+
+
+        const reportData: ReportData = {
+          title: `Member Statement - ${userProfile.name || 'Current User'}`,
+          dateRange: dateRange?.from ? `${format(dateRange.from, "PPP")} - ${dateRange.to ? format(dateRange.to, "PPP") : 'Present'}` : "All Time",
+          currencySymbol: settings.currencySymbol || "MK",
+          columns: [
+            { accessorKey: "date", header: "Date" },
+            { accessorKey: "description", header: "Description" },
+            { accessorKey: "debit", header: `Debit (${settings.currencySymbol})` },
+            { accessorKey: "credit", header: `Credit (${settings.currencySymbol})` },
+            { accessorKey: "balance", header: `Balance (${settings.currencySymbol})` },
+          ],
+          data: statementItems,
+          summary: [
+            // { label: "Opening Balance", value: 0 }, // Placeholder
+            { label: "Total Contributions", value: statementItems.filter(item => item.description === "Contribution Received").reduce((sum, item) => sum + (item.credit || 0), 0)},
+            { label: "Total Penalties Paid", value: statementItems.filter(item => item.description === "Penalty Payment Received").reduce((sum, item) => sum + (item.credit || 0), 0)},
+            // { label: "Closing Balance", value: runningBalance }, // Placeholder
+          ],
+        };
+        setGeneratedReportData(reportData);
+      } catch (err: any) {
+        console.error("Error generating member statement:", err);
+        toast({ title: "Statement Error", description: `Could not generate member statement: ${err.message}`, variant: "destructive" });
+        setGeneratedReportData(null);
+      }
+
+    } else {
+      // Existing mock data for other report types
       const mockData: ReportData = {
         title: reportTypes.find(rt => rt.value === reportType)?.label || "Report",
-        dateRange: dateRange ? `${format(dateRange.from!, "PPP")} - ${format(dateRange.to!, "PPP")}` : "All Time",
+        dateRange: dateRange?.from ? `${format(dateRange.from, "PPP")} - ${dateRange.to ? format(dateRange.to, "PPP") : 'Present'}` : "All Time",
         currencySymbol: settings.currencySymbol || "MK",
-        columns: [ // Example columns
+        columns: [
             { accessorKey: "date", header: "Date" },
             { accessorKey: "description", header: "Description" },
             { accessorKey: "amount", header: "Amount" }
         ],
-        data: [ // Example data
-          { date: "2024-05-01", description: "Contribution", amount: 5000 },
-          { date: "2024-05-15", description: "Office Supplies Expense", amount: -1500 },
+        data: [
+          { date: "2024-05-01", description: "Mock Contribution", amount: 5000 },
+          { date: "2024-05-15", description: "Mock Office Supplies Expense", amount: -1500 },
+        ],
+         summary: [
+          { label: "Total Debits (Mock)", value: 1500 },
+          { label: "Total Credits (Mock)", value: 5000 },
+          { label: "Net Activity (Mock)", value: 3500 },
         ],
       };
       setGeneratedReportData(mockData);
-      setLoading(false);
-    }, 1000);
+    }
+    setLoading(false);
   };
 
   const exportToPDF = useCallback(() => {
@@ -71,15 +177,18 @@ export default function ReportGenerator() {
         const canvasWidth = canvas.width;
         const canvasHeight = canvas.height;
         const ratio = canvasWidth / canvasHeight;
-        const width = pdfWidth - 20; // with some margin
-        const height = width / ratio;
+        let width = pdfWidth - 20; // with some margin
+        let height = width / ratio;
         
-        let finalHeight = height;
-        if (height > pdfHeight - 20) {
-            finalHeight = pdfHeight - 20;
+        if (height > pdfHeight - 20) { // If content is taller than page
+            height = pdfHeight - 20; // Cap height
+            width = height * (1/ratio); // Adjust width to maintain aspect ratio
         }
+        // Center the image on the PDF page
+        const x = (pdfWidth - width) / 2;
+        const y = 10; // Top margin
 
-        pdf.addImage(imgData, 'PNG', 10, 10, width, finalHeight);
+        pdf.addImage(imgData, 'PNG', x, y, width, height);
         pdf.save(`${generatedReportData?.title.replace(/\s+/g, '_') || 'report'}.pdf`);
       });
     }
@@ -118,7 +227,7 @@ export default function ReportGenerator() {
             </Select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="date-range">Date Range</Label>
+            <Label htmlFor="date-range">Date Range (Optional)</Label>
             <Popover>
               <PopoverTrigger asChild>
                 <Button
@@ -154,16 +263,17 @@ export default function ReportGenerator() {
           </div>
         </div>
         <Button onClick={handleGenerateReport} disabled={loading || !reportType} className="w-full md:w-auto">
+          {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
           {loading ? "Generating..." : "Generate Report"}
         </Button>
 
         {generatedReportData && (
           <div className="mt-8">
             <div className="flex justify-end gap-2 mb-4">
-                <Button variant="outline" onClick={exportToPDF}><FileText className="mr-2 h-4 w-4" /> Export PDF</Button>
+                <Button variant="outline" onClick={exportToPDF}><Download className="mr-2 h-4 w-4" /> Export PDF</Button>
                 <Button variant="outline" onClick={exportToJPG}><ImageIcon className="mr-2 h-4 w-4" /> Export JPG</Button>
             </div>
-            <div ref={reportViewRef} className="border rounded-lg p-4 bg-white"> {/* Ensure background for canvas */}
+            <div ref={reportViewRef} className="border rounded-lg p-4 bg-white">
               <ReportView reportData={generatedReportData} />
             </div>
           </div>

@@ -32,6 +32,13 @@ export default function ReportView({ reportData }: ReportViewProps) {
     ? globalSettings.invoiceLogoUrl
     : globalSettings.logoUrl;
 
+  const formatCurrencyValue = (value: any, currencySymbol: string) => {
+    if (typeof value === 'number') {
+      return `${currencySymbol} ${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+    return value; // Return as is if not a number (e.g. empty string for debit if no value)
+  };
+
   return (
     <div className="p-4 text-black bg-white"> {/* Ensure text is black for PDF/JPG export */}
       <header className="mb-6 text-center">
@@ -67,8 +74,11 @@ export default function ReportView({ reportData }: ReportViewProps) {
               <TableRow key={rowIndex}>
                 {reportData.columns.map((col) => (
                   <TableCell key={`${rowIndex}-${col.accessorKey}`}>
-                    {typeof row[col.accessorKey] === 'number' && col.accessorKey.toLowerCase().includes('amount') 
-                      ? `${reportData.currencySymbol} ${row[col.accessorKey].toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` 
+                    { (col.accessorKey.toLowerCase().includes('amount') || 
+                       col.accessorKey.toLowerCase() === 'debit' || 
+                       col.accessorKey.toLowerCase() === 'credit' ||
+                       col.accessorKey.toLowerCase() === 'balance')
+                      ? formatCurrencyValue(row[col.accessorKey], reportData.currencySymbol)
                       : row[col.accessorKey]}
                   </TableCell>
                 ))}
