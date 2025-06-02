@@ -9,18 +9,18 @@ import { Calendar } from '@/components/ui/calendar';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { CalendarIcon, Download, FileText, Image as ImageIcon, Loader2 } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, startOfDay, endOfDay } from 'date-fns';
 import type { DateRange } from 'react-day-picker';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import ReportView, { type ReportData } from './ReportView';
 import { useSettings } from '@/contexts/SettingsProvider';
 import { cn } from "@/lib/utils";
-import { useAuth } from '@/contexts/AuthProvider'; // Added
-import { useFirebase } from '@/contexts/FirebaseProvider'; // Added
-import { collection, query, where, getDocs, Timestamp, orderBy } from 'firebase/firestore'; // Added
-import { useToast } from '@/hooks/use-toast'; // Added
-import type { Contribution } from '@/lib/types'; // Added
+import { useAuth } from '@/contexts/AuthProvider';
+import { useFirebase } from '@/contexts/FirebaseProvider';
+import { collection, query, where, getDocs, Timestamp, orderBy } from 'firebase/firestore';
+import { useToast } from '@/hooks/use-toast';
+import type { Contribution, Penalty } from '@/lib/types';
 
 type ReportType = 'member_statement' | 'financial_activity' | 'contribution_details' | 'penalty_details' | 'expense_details';
 
@@ -31,6 +31,14 @@ const reportTypes: { value: ReportType; label: string }[] = [
   // Add more report types here
 ];
 
+interface StatementTransaction {
+  date: Date;
+  description: string;
+  debit: number | string;
+  credit: number | string;
+  balance?: number; // Balance will be calculated and added later
+}
+
 export default function ReportGenerator() {
   const [reportType, setReportType] = useState<ReportType | undefined>(undefined);
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
@@ -38,9 +46,9 @@ export default function ReportGenerator() {
   const [loading, setLoading] = useState(false);
   const reportViewRef = useRef<HTMLDivElement>(null);
   const { settings } = useSettings();
-  const { userProfile } = useAuth(); // Added
-  const { db } = useFirebase(); // Added
-  const { toast } = useToast(); // Added
+  const { userProfile } = useAuth();
+  const { db } = useFirebase();
+  const { toast } = useToast();
 
   const handleGenerateReport = async () => {
     if (!reportType) {
@@ -58,66 +66,99 @@ export default function ReportGenerator() {
       }
 
       try {
-        const contributionsRef = collection(db, "contributions");
-        const qConstraints = [
-          where("userId", "==", userProfile.uid),
-          orderBy("datePaid", "asc")
-        ];
+        const reportStartDate = dateRange?.from ? startOfDay(dateRange.from) : null;
+        const reportEndDate = dateRange?.to ? endOfDay(dateRange.to) : null;
 
-        if (dateRange?.from) {
-          qConstraints.unshift(where("datePaid", ">=", Timestamp.fromDate(dateRange.from)));
-        }
-        if (dateRange?.to) {
-          // To include the whole day, set time to end of day for 'to' date
-          const toDate = new Date(dateRange.to);
-          toDate.setHours(23, 59, 59, 999);
-          qConstraints.unshift(where("datePaid", "<=", Timestamp.fromDate(toDate)));
-        }
+        // Fetch all contributions for the user
+        const contributionsRef = collection(db, "contributions");
+        const contribQuery = query(contributionsRef, where("userId", "==", userProfile.uid), orderBy("datePaid", "asc"));
+        const contribSnap = await getDocs(contribQuery);
         
-        const contributionsQuery = query(contributionsRef, ...qConstraints);
-        const contribSnap = await getDocs(contributionsQuery);
-        
-        const statementItems: any[] = [];
-        let runningBalance = 0; // Simplified running balance, starts at 0 for the period
+        const allTransactions: StatementTransaction[] = [];
 
         contribSnap.forEach(doc => {
           const contrib = doc.data() as Contribution;
           const datePaid = contrib.datePaid instanceof Timestamp ? contrib.datePaid.toDate() : new Date(contrib.datePaid);
           
           if (contrib.amount > 0) {
-            runningBalance += contrib.amount;
-            statementItems.push({
-              date: format(datePaid, "yyyy-MM-dd"),
+            allTransactions.push({
+              date: datePaid,
               description: "Contribution Received",
               debit: '',
               credit: contrib.amount,
-              balance: runningBalance 
             });
           }
-
           if (contrib.penaltyPaidAmount && contrib.penaltyPaidAmount > 0) {
-            runningBalance += contrib.penaltyPaidAmount; // Assuming penalty paid also increases member's "credit" or reduces liability
-            statementItems.push({
-              date: format(datePaid, "yyyy-MM-dd"),
+            allTransactions.push({
+              date: datePaid,
               description: "Penalty Payment Received",
               debit: '',
               credit: contrib.penaltyPaidAmount,
-              balance: runningBalance
             });
           }
         });
-        
-        // Placeholder for fetching incurred penalties (Debits) - Future enhancement
-        // For example, if you have a 'penalties' collection:
-        // const penaltiesQuery = query(collection(db, "penalties"), where("userId", "==", userProfile.uid), ...dateFilters);
-        // const penaltySnap = await getDocs(penaltiesQuery);
-        // penaltySnap.forEach(doc => { ... add to statementItems as debit, update runningBalance ... });
-        // statementItems.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()); // Re-sort if mixing sources
 
+        // Fetch all incurred penalties for the user (from 'penalties' collection)
+        // This assumes a 'penalties' collection exists and has 'userId', 'dateIssued', 'amount' fields.
+        try {
+            const penaltiesRef = collection(db, "penalties");
+            const penaltyQuery = query(penaltiesRef, where("userId", "==", userProfile.uid), orderBy("dateIssued", "asc"));
+            const penaltySnap = await getDocs(penaltyQuery);
+
+            penaltySnap.forEach(doc => {
+                const penalty = doc.data() as Penalty;
+                const dateIssued = penalty.dateIssued instanceof Timestamp ? penalty.dateIssued.toDate() : new Date(penalty.dateIssued);
+                allTransactions.push({
+                    date: dateIssued,
+                    description: penalty.description || "Penalty Incurred",
+                    debit: penalty.amount,
+                    credit: '',
+                });
+            });
+        } catch (penaltyError) {
+            console.warn("Could not fetch penalties, or 'penalties' collection might not exist:", penaltyError);
+            toast({ title: "Penalties Note", description: "Could not fetch incurred penalties data. Statement might be incomplete regarding penalties owed.", variant: "default", duration: 7000});
+        }
+        
+        // Sort all transactions by date
+        allTransactions.sort((a, b) => a.date.getTime() - b.date.getTime());
+
+        let openingBalance = 0;
+        const statementItems: any[] = [];
+        let runningBalance = 0;
+
+        // Calculate Opening Balance
+        for (const transaction of allTransactions) {
+          if (reportStartDate && transaction.date < reportStartDate) {
+            openingBalance += (typeof transaction.credit === 'number' ? transaction.credit : 0) - (typeof transaction.debit === 'number' ? transaction.debit : 0);
+          }
+        }
+        runningBalance = openingBalance;
+        
+        // Process transactions for the report period
+        for (const transaction of allTransactions) {
+          if (reportStartDate && transaction.date < reportStartDate) {
+            continue; // Skip transactions before report period for detailed list
+          }
+          if (reportEndDate && transaction.date > reportEndDate) {
+            continue; // Skip transactions after report period
+          }
+          
+          runningBalance += (typeof transaction.credit === 'number' ? transaction.credit : 0) - (typeof transaction.debit === 'number' ? transaction.debit : 0);
+          statementItems.push({
+            date: format(transaction.date, "yyyy-MM-dd"),
+            description: transaction.description,
+            debit: transaction.debit,
+            credit: transaction.credit,
+            balance: runningBalance 
+          });
+        }
+        
+        const closingBalance = runningBalance;
 
         const reportData: ReportData = {
           title: `Member Statement - ${userProfile.name || 'Current User'}`,
-          dateRange: dateRange?.from ? `${format(dateRange.from, "PPP")} - ${dateRange.to ? format(dateRange.to, "PPP") : 'Present'}` : "All Time",
+          dateRange: reportStartDate ? `${format(reportStartDate, "PPP")} - ${reportEndDate ? format(reportEndDate, "PPP") : 'Present'}` : "All Time",
           currencySymbol: settings.currencySymbol || "MK",
           columns: [
             { accessorKey: "date", header: "Date" },
@@ -128,16 +169,16 @@ export default function ReportGenerator() {
           ],
           data: statementItems,
           summary: [
-            // { label: "Opening Balance", value: 0 }, // Placeholder
-            { label: "Total Contributions", value: statementItems.filter(item => item.description === "Contribution Received").reduce((sum, item) => sum + (item.credit || 0), 0)},
-            { label: "Total Penalties Paid", value: statementItems.filter(item => item.description === "Penalty Payment Received").reduce((sum, item) => sum + (item.credit || 0), 0)},
-            // { label: "Closing Balance", value: runningBalance }, // Placeholder
+            { label: "Opening Balance", value: openingBalance },
+            { label: "Total Credits During Period", value: statementItems.reduce((sum, item) => sum + (typeof item.credit === 'number' ? item.credit : 0), 0)},
+            { label: "Total Debits During Period", value: statementItems.reduce((sum, item) => sum + (typeof item.debit === 'number' ? item.debit : 0), 0)},
+            { label: "Closing Balance", value: closingBalance },
           ],
         };
         setGeneratedReportData(reportData);
       } catch (err: any) {
         console.error("Error generating member statement:", err);
-        toast({ title: "Statement Error", description: `Could not generate member statement: ${err.message}`, variant: "destructive" });
+        toast({ title: "Statement Error", description: `Could not generate member statement: ${err.message}. This might be due to missing Firestore indexes.`, variant: "destructive", duration: 10000 });
         setGeneratedReportData(null);
       }
 
@@ -182,7 +223,7 @@ export default function ReportGenerator() {
         
         if (height > pdfHeight - 20) { // If content is taller than page
             height = pdfHeight - 20; // Cap height
-            width = height * (1/ratio); // Adjust width to maintain aspect ratio
+            width = height * (canvasWidth / canvasHeight); // Adjust width to maintain aspect ratio - corrected this line
         }
         // Center the image on the PDF page
         const x = (pdfWidth - width) / 2;
@@ -273,7 +314,7 @@ export default function ReportGenerator() {
                 <Button variant="outline" onClick={exportToPDF}><Download className="mr-2 h-4 w-4" /> Export PDF</Button>
                 <Button variant="outline" onClick={exportToJPG}><ImageIcon className="mr-2 h-4 w-4" /> Export JPG</Button>
             </div>
-            <div ref={reportViewRef} className="border rounded-lg p-4 bg-white">
+            <div ref={reportViewRef} className="border rounded-lg p-4 bg-white"> {/* Ensure bg-white for html2canvas */}
               <ReportView reportData={generatedReportData} />
             </div>
           </div>
@@ -282,3 +323,4 @@ export default function ReportGenerator() {
     </Card>
   );
 }
+

@@ -320,6 +320,19 @@ export interface ProfessionalPaymentFormValues {
   notes?: string;
 }
 
+export interface Penalty {
+  id?: string;
+  userId: string;
+  userName?: string; 
+  dateIssued: any; // Firestore Timestamp
+  amount: number;
+  description: string;
+  status: 'Unpaid' | 'Paid' | 'Waived'; 
+  relatedContributionId?: string; 
+  createdAt?: any;
+}
+
+
 // Company Info type (for companyInfo collection, usually a single document)
 // export interface CompanyInfo {
 //   id?: string; // Typically a fixed ID like 'main'
