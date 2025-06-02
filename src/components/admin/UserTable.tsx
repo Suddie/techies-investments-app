@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -11,15 +12,18 @@ import { ACCESS_LEVELS } from '@/lib/constants';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useFirebase } from '@/contexts/FirebaseProvider';
 import { collection, onSnapshot, doc, updateDoc, query, orderBy } from 'firebase/firestore';
+import { sendPasswordResetEmail } from "firebase/auth"; // Import sendPasswordResetEmail
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+
 
 interface UserTableProps {
   onEditUser: (user: UserProfile) => void;
 }
 
 export default function UserTable({ onEditUser }: UserTableProps) {
-  const { db } = useFirebase();
+  const { db, auth } = useFirebase(); // Add auth
   const { toast } = useToast();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -27,24 +31,21 @@ export default function UserTable({ onEditUser }: UserTableProps) {
   useEffect(() => {
     setLoading(true);
     const usersCollectionRef = collection(db, "users");
-    const q = query(usersCollectionRef, orderBy("name", "asc")); // Order by name
+    const q = query(usersCollectionRef, orderBy("name", "asc")); 
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const fetchedUsers: UserProfile[] = [];
       querySnapshot.forEach((doc) => {
-        // Explicitly cast to UserProfile, ensuring all required fields are present or handled.
-        // Firestore data might not perfectly match the type, so provide defaults or handle missing fields.
         const data = doc.data();
         fetchedUsers.push({
           uid: doc.id,
           email: data.email || null,
           name: data.name || "Unnamed User",
-          role: data.role || "Member", // Default to 'Member' if not set
-          accessLevel: data.accessLevel || 3, // Default to accessLevel 3 if not set
-          status: data.status || 'Active', // Default to 'Active'
-          requiresPasswordChange: data.requiresPasswordChange ?? false, // Default to false
+          role: data.role || "Member", 
+          accessLevel: data.accessLevel || 3, 
+          status: data.status || 'Active', 
+          requiresPasswordChange: data.requiresPasswordChange ?? false, 
           photoURL: data.photoURL || null,
-          // Add other fields from UserProfile with defaults if necessary
         } as UserProfile);
       });
       setUsers(fetchedUsers);
@@ -59,7 +60,7 @@ export default function UserTable({ onEditUser }: UserTableProps) {
       setLoading(false);
     });
 
-    return () => unsubscribe(); // Cleanup on unmount
+    return () => unsubscribe(); 
   }, [db, toast]);
 
   const updateUserStatus = async (userId: string, newStatus: 'Active' | 'Inactive') => {
@@ -88,15 +89,30 @@ export default function UserTable({ onEditUser }: UserTableProps) {
     updateUserStatus(userId, 'Active');
   };
 
-  const handleResetPassword = (userEmail: string) => {
-    // Actual password reset should be done via Firebase Auth, potentially a Cloud Function triggered by Admin.
-    // For now, this is a placeholder.
-    console.log("Initiate password reset for (mock operation):", userEmail);
-    toast({
-      title: "Password Reset (Mock)",
-      description: `Password reset for ${userEmail} would be initiated here. This is currently a mock action.`,
-      duration: 5000,
-    });
+  const handleResetPassword = async (userEmail: string | null) => {
+    if (!userEmail) {
+      toast({
+        title: "Cannot Reset Password",
+        description: "User email is not available.",
+        variant: "destructive",
+      });
+      return;
+    }
+    try {
+      await sendPasswordResetEmail(auth, userEmail);
+      toast({
+        title: "Password Reset Email Sent",
+        description: `A password reset email has been sent to ${userEmail}.`,
+        duration: 7000,
+      });
+    } catch (error: any) {
+      console.error("Error sending password reset email:", error);
+      toast({
+        title: "Password Reset Failed",
+        description: error.message || "Could not send password reset email.",
+        variant: "destructive",
+      });
+    }
   };
 
 
@@ -123,7 +139,6 @@ export default function UserTable({ onEditUser }: UserTableProps) {
 
   return (
     <>
-      {/* Removed the "Mock Data" alert as we are now fetching real data. */}
       <Table>
         <TableHeader>
           <TableRow>
@@ -173,8 +188,8 @@ export default function UserTable({ onEditUser }: UserTableProps) {
                     <DropdownMenuItem onClick={() => onEditUser(user)}>
                       <Edit2 className="mr-2 h-4 w-4" /> Edit User Profile
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => user.email && handleResetPassword(user.email)}>
-                      <KeyRound className="mr-2 h-4 w-4" /> Reset Password (Mock)
+                    <DropdownMenuItem onClick={() => handleResetPassword(user.email)} disabled={!user.email}>
+                      <KeyRound className="mr-2 h-4 w-4" /> Reset Password
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     {user.status === 'Active' ? (
