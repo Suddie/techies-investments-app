@@ -4,45 +4,45 @@
 import MetricCard from "@/components/dashboard/MetricCard";
 import ProjectCompletionChart from "@/components/dashboard/ProjectCompletionChart";
 import PageHeader from "@/components/common/PageHeader";
-import { DollarSign, TrendingDown, Users, Landmark, BarChartBig, AlertTriangle, UserX, CircleDollarSign } from "lucide-react"; 
+import { DollarSign, TrendingDown, Users, Landmark, BarChartBig, AlertTriangle, UserX, CircleDollarSign } from "lucide-react";
 import { useAuth } from "@/contexts/AuthProvider";
 import { useSettings } from "@/contexts/SettingsProvider";
 import NotificationList from "@/components/notifications/NotificationList";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, orderBy, limit, Timestamp, getDocs, onSnapshot, collectionGroup, sum } from 'firebase/firestore';
+import { collection, query, where, orderBy, limit, Timestamp, getDocs, onSnapshot } from 'firebase/firestore';
 import { useFirebase } from '@/contexts/FirebaseProvider';
 import { Skeleton } from "@/components/ui/skeleton";
-import { format } from "date-fns";
+// import { format } from "date-fns"; // No longer needed here
 import MilestoneProgressCard from "@/components/dashboard/MilestoneProgressCard";
-import type { UserProfile } from "@/lib/types";
+import type { UserProfile, Milestone } from "@/lib/types";
 
 
 export default function DashboardPage() {
-  const { user, userProfile } = useAuth(); 
+  const { user, userProfile } = useAuth();
   const { settings } = useSettings();
   const { db } = useFirebase();
-  const shareValue = settings.contributionMin || 1000; 
+  const shareValue = settings.contributionMin || 1000;
   const [isMounted, setIsMounted] = useState(false);
 
   const [totalFunds, setTotalFunds] = useState<number | null>(null);
   const [totalExpenditures, setTotalExpenditures] = useState<number | null>(null);
-  const [totalContributionsMonth, setTotalContributionsMonth] = useState<number | null>(null); 
+  const [totalContributionsMonth, setTotalContributionsMonth] = useState<number | null>(null);
   const [userTotalContributions, setUserTotalContributions] = useState<number | null>(null);
   const [userTotalShares, setUserTotalShares] = useState<number | null>(null);
   const [overdueMembers, setOverdueMembers] = useState<UserProfile[]>([]);
+  const [projectCompletionPercentage, setProjectCompletionPercentage] = useState(0); // For dynamic project completion
 
   const [loadingMetrics, setLoadingMetrics] = useState({
     funds: true,
     expenditures: true,
-    contributionsMonth: true, 
-    userSummary: true, 
+    contributionsMonth: true,
+    userSummary: true,
     overdueMembers: true,
+    projectCompletion: true, // Added loading state for project completion
   });
 
-  const projectCompletion = 65; 
-  
   useEffect(() => {
     setIsMounted(true);
   }, []);
@@ -64,11 +64,11 @@ export default function DashboardPage() {
           const latestBalanceDoc = querySnapshot.docs[0];
           setTotalFunds(latestBalanceDoc.data().closingBalance);
         } else {
-          setTotalFunds(0); 
+          setTotalFunds(0);
         }
       } catch (error) {
         console.error("Error fetching total funds:", error);
-        setTotalFunds(0); 
+        setTotalFunds(0);
       } finally {
         setLoadingMetrics(prev => ({ ...prev, funds: false }));
       }
@@ -98,11 +98,11 @@ export default function DashboardPage() {
         setLoadingMetrics(prev => ({ ...prev, contributionsMonth: false }));
     });
     unsubscribes.push(unsubscribeContrib);
-    
+
     // Fetch Total Expenditures (Current Month)
     const expensesQuery = query(
       collection(db, "expenses"),
-      where("date", ">=", firstDayTimestamp), 
+      where("date", ">=", firstDayTimestamp),
       where("date", "<=", lastDayTimestamp)
     );
     const unsubscribeExpenses = onSnapshot(expensesQuery, (snapshot) => {
@@ -151,7 +151,7 @@ export default function DashboardPage() {
         collection(db, "users"),
         where("status", "==", "Active"),
         where("penaltyBalance", ">", 0),
-        orderBy("penaltyBalance", "desc") 
+        orderBy("penaltyBalance", "desc")
     );
     const unsubscribeOverdueMembers = onSnapshot(overdueMembersQuery, (snapshot) => {
         const members: UserProfile[] = [];
@@ -167,6 +167,31 @@ export default function DashboardPage() {
     });
     unsubscribes.push(unsubscribeOverdueMembers);
 
+    // Fetch Milestones for Project Completion Chart
+    setLoadingMetrics(prev => ({ ...prev, projectCompletion: true }));
+    const milestonesQuery = query(collection(db, "milestones"));
+    const unsubscribeMilestones = onSnapshot(milestonesQuery, (snapshot) => {
+        let completedCount = 0;
+        const totalCount = snapshot.size;
+        snapshot.forEach(doc => {
+            const milestone = doc.data() as Milestone;
+            if (milestone.status === 'Completed') {
+                completedCount++;
+            }
+        });
+        if (totalCount > 0) {
+            setProjectCompletionPercentage(Math.round((completedCount / totalCount) * 100));
+        } else {
+            setProjectCompletionPercentage(0); // Default to 0 if no milestones
+        }
+        setLoadingMetrics(prev => ({ ...prev, projectCompletion: false }));
+    }, (error) => {
+        console.error("Error fetching milestones for project completion:", error);
+        setProjectCompletionPercentage(0); // Default to 0 on error
+        setLoadingMetrics(prev => ({ ...prev, projectCompletion: false }));
+    });
+    unsubscribes.push(unsubscribeMilestones);
+
 
     return () => {
       unsubscribes.forEach(unsub => unsub());
@@ -180,7 +205,7 @@ export default function DashboardPage() {
         title={`Welcome, ${userProfile?.name || "User"}!`}
         description="Here's an overview of your group's investments and activities."
       />
-      
+
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
         <MetricCard
           title="Total Funds"
@@ -200,17 +225,25 @@ export default function DashboardPage() {
           icon={CircleDollarSign}
           description="Contributions this month"
         />
-         <MetricCard 
+         <MetricCard
           title="Overdue Contributions"
-          value={!isMounted || loadingMetrics.overdueMembers ? <Skeleton className="h-7 w-1/4" /> : overdueMembers.length.toString()} 
-          icon={UserX} 
+          value={!isMounted || loadingMetrics.overdueMembers ? <Skeleton className="h-7 w-1/4" /> : overdueMembers.length.toString()}
+          icon={UserX}
           description="Members with pending payments"
         />
       </div>
 
       <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-3 mb-6">
-        <div className="lg:col-span-1"> 
-           <ProjectCompletionChart percentage={projectCompletion} />
+        <div className="lg:col-span-1">
+           {!isMounted || loadingMetrics.projectCompletion ? (
+             <Card>
+                <CardHeader><Skeleton className="h-5 w-3/4 mb-1" /><Skeleton className="h-4 w-1/2" /></CardHeader>
+                <CardContent><Skeleton className="h-[150px] w-full" /></CardContent>
+                <CardFooter><Skeleton className="h-4 w-full" /></CardFooter>
+             </Card>
+           ) : (
+            <ProjectCompletionChart percentage={projectCompletionPercentage} />
+           )}
         </div>
         <div className="lg:col-span-1">
            <MilestoneProgressCard />
@@ -219,25 +252,25 @@ export default function DashboardPage() {
           <NotificationList />
         </div>
       </div>
-      
+
        <div className="mt-6">
         <h3 className="text-xl font-semibold mb-3">Your Personal Summary</h3>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3"> {/* Adjusted grid to lg:grid-cols-3 */}
-          <MetricCard 
-            title="Your Total Contributions" 
-            value={!isMounted || loadingMetrics.userSummary ? <Skeleton className="h-7 w-3/4" /> : `${settings.currencySymbol} ${(userTotalContributions ?? 0).toLocaleString()}`} 
-            icon={DollarSign} 
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <MetricCard
+            title="Your Total Contributions"
+            value={!isMounted || loadingMetrics.userSummary ? <Skeleton className="h-7 w-3/4" /> : `${settings.currencySymbol} ${(userTotalContributions ?? 0).toLocaleString()}`}
+            icon={DollarSign}
             description="All time contributions"
           />
-          <MetricCard 
-            title="Your Shares" 
-            value={!isMounted || loadingMetrics.userSummary ? <Skeleton className="h-7 w-1/2" /> : (userTotalShares ?? 0).toFixed(2)} 
-            icon={BarChartBig} 
+          <MetricCard
+            title="Your Shares"
+            value={!isMounted || loadingMetrics.userSummary ? <Skeleton className="h-7 w-1/2" /> : (userTotalShares ?? 0).toFixed(2)}
+            icon={BarChartBig}
             description={shareValue > 0 ? `1 Share = ${settings.currencySymbol}${shareValue.toLocaleString()}` : "Share value not set"}
           />
-           <MetricCard 
-            title="Pending Penalties" 
-            value={!isMounted || loadingMetrics.userSummary ? <Skeleton className="h-7 w-1/2" /> : `${settings.currencySymbol} ${(userProfile?.penaltyBalance || 0).toLocaleString()}`} 
+           <MetricCard
+            title="Pending Penalties"
+            value={!isMounted || loadingMetrics.userSummary ? <Skeleton className="h-7 w-1/2" /> : `${settings.currencySymbol} ${(userProfile?.penaltyBalance || 0).toLocaleString()}`}
             icon={AlertTriangle}
             description="Your outstanding penalties"
           />
@@ -248,7 +281,7 @@ export default function DashboardPage() {
         <CardHeader>
             <CardTitle>Members with Outstanding Penalties</CardTitle>
             <CardDescription>
-              List of active members with a penalty balance greater than zero. 
+              List of active members with a penalty balance greater than zero.
               This list relies on the 'automatedPenaltyGeneration' Cloud Function for accuracy.
             </CardDescription>
         </CardHeader>
