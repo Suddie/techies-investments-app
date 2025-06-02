@@ -30,21 +30,27 @@ interface SettingsProviderProps {
 
 export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) => {
   const { db } = useFirebase();
-  const { loading: authLoading } = useAuth(); // Removed 'user' dependency here for fetching global settings
+  const { user, loading: authLoading } = useAuth(); // Get the user object
   const [settings, setSettings] = useState<GlobalSettings>(DEFAULT_GLOBAL_SETTINGS);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setLoading(true); // Indicate that settings are being loaded or re-evaluated
+    setLoading(true); 
 
     if (authLoading) {
-      // If auth is still loading, settings are effectively loading.
-      // setLoading(true) is already called.
-      return; // Don't proceed until auth state (and Firebase init) is resolved.
+      // Auth state is still resolving, wait.
+      return; 
     }
 
-    // Auth state is resolved (authLoading is false).
-    // Attempt to fetch global settings regardless of user login state.
+    if (!user) {
+      // No user is authenticated, use default settings and don't attempt Firestore fetch.
+      // This prevents permission errors for unauthenticated reads to /settings/global_settings.
+      setSettings(DEFAULT_GLOBAL_SETTINGS);
+      setLoading(false);
+      return;
+    }
+
+    // User is authenticated, proceed to fetch global settings.
     const settingsDocRef = doc(db, 'settings', 'global_settings');
     const unsubscribe = onSnapshot(
       settingsDocRef,
@@ -52,14 +58,14 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         if (docSnap.exists()) {
           setSettings(docSnap.data() as GlobalSettings);
         } else {
-          // console.warn('Global settings document not found. Using default settings.');
+          // console.warn('SettingsProvider: Global settings document not found. Using default settings.');
           setSettings(DEFAULT_GLOBAL_SETTINGS);
         }
-        setLoading(false); // Settings (or defaults) are now loaded
+        setLoading(false);
       },
       (error) => {
-        console.error('Error fetching global settings:', error);
-        // If permissions error or other error, fallback to defaults.
+        console.error('SettingsProvider: Error fetching global settings:', error);
+        // Fallback to defaults on error (including permission errors for authenticated users if rules are restrictive)
         setSettings(DEFAULT_GLOBAL_SETTINGS);
         setLoading(false);
       }
@@ -68,7 +74,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     return () => {
       unsubscribe(); // Clean up the listener
     };
-  }, [db, authLoading]); // Dependencies: run when db instance changes or auth loading state changes.
+  }, [db, user, authLoading]); // Depend on user and authLoading
 
   return (
     <SettingsContext.Provider value={{ settings, loading }}>
