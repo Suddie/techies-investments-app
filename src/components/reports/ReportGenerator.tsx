@@ -69,13 +69,13 @@ export default function ReportGenerator() {
         const reportStartDate = dateRange?.from ? startOfDay(dateRange.from) : null;
         const reportEndDate = dateRange?.to ? endOfDay(dateRange.to) : null;
 
+        const allTransactions: StatementTransaction[] = [];
+
         // Fetch all contributions for the user
         const contributionsRef = collection(db, "contributions");
         const contribQuery = query(contributionsRef, where("userId", "==", userProfile.uid), orderBy("datePaid", "asc"));
         const contribSnap = await getDocs(contribQuery);
         
-        const allTransactions: StatementTransaction[] = [];
-
         contribSnap.forEach(doc => {
           const contrib = doc.data() as Contribution;
           const datePaid = contrib.datePaid instanceof Timestamp ? contrib.datePaid.toDate() : new Date(contrib.datePaid);
@@ -98,8 +98,7 @@ export default function ReportGenerator() {
           }
         });
 
-        // Fetch all incurred penalties for the user (from 'penalties' collection)
-        // This assumes a 'penalties' collection exists and has 'userId', 'dateIssued', 'amount' fields.
+        // Fetch all incurred penalties for the user
         try {
             const penaltiesRef = collection(db, "penalties");
             const penaltyQuery = query(penaltiesRef, where("userId", "==", userProfile.uid), orderBy("dateIssued", "asc"));
@@ -115,19 +114,22 @@ export default function ReportGenerator() {
                     credit: '',
                 });
             });
-        } catch (penaltyError) {
-            console.warn("Could not fetch penalties, or 'penalties' collection might not exist:", penaltyError);
-            toast({ title: "Penalties Note", description: "Could not fetch incurred penalties data. Statement might be incomplete regarding penalties owed.", variant: "default", duration: 7000});
+        } catch (penaltyError: any) {
+            console.warn("Could not fetch penalties, or 'penalties' collection might not exist:", penaltyError.message);
+            toast({ 
+                title: "Penalty Data Status", 
+                description: "Attempted to fetch penalty data. If there were issues (e.g., missing 'penalties' collection or necessary indexes), this section might be incomplete. The report will generate with available data.", 
+                variant: "default", 
+                duration: 8000
+            });
         }
         
-        // Sort all transactions by date
         allTransactions.sort((a, b) => a.date.getTime() - b.date.getTime());
 
         let openingBalance = 0;
         const statementItems: any[] = [];
         let runningBalance = 0;
 
-        // Calculate Opening Balance
         for (const transaction of allTransactions) {
           if (reportStartDate && transaction.date < reportStartDate) {
             openingBalance += (typeof transaction.credit === 'number' ? transaction.credit : 0) - (typeof transaction.debit === 'number' ? transaction.debit : 0);
@@ -135,13 +137,12 @@ export default function ReportGenerator() {
         }
         runningBalance = openingBalance;
         
-        // Process transactions for the report period
         for (const transaction of allTransactions) {
           if (reportStartDate && transaction.date < reportStartDate) {
-            continue; // Skip transactions before report period for detailed list
+            continue; 
           }
           if (reportEndDate && transaction.date > reportEndDate) {
-            continue; // Skip transactions after report period
+            continue; 
           }
           
           runningBalance += (typeof transaction.credit === 'number' ? transaction.credit : 0) - (typeof transaction.debit === 'number' ? transaction.debit : 0);
@@ -217,17 +218,16 @@ export default function ReportGenerator() {
         const pdfHeight = pdf.internal.pageSize.getHeight();
         const canvasWidth = canvas.width;
         const canvasHeight = canvas.height;
-        const ratio = canvasWidth / canvasHeight;
+        
         let width = pdfWidth - 20; // with some margin
-        let height = width / ratio;
+        let height = (canvasHeight * width) / canvasWidth; // maintain aspect ratio
         
         if (height > pdfHeight - 20) { // If content is taller than page
             height = pdfHeight - 20; // Cap height
-            width = height * (canvasWidth / canvasHeight); // Adjust width to maintain aspect ratio - corrected this line
+            width = (canvasWidth * height) / canvasHeight; // Adjust width to maintain aspect ratio
         }
-        // Center the image on the PDF page
         const x = (pdfWidth - width) / 2;
-        const y = 10; // Top margin
+        const y = 10; 
 
         pdf.addImage(imgData, 'PNG', x, y, width, height);
         pdf.save(`${generatedReportData?.title.replace(/\s+/g, '_') || 'report'}.pdf`);
