@@ -73,9 +73,9 @@ export default function LoginForm() {
           <h2 className="text-2xl font-semibold text-center text-foreground">
             {settingsLoading ? <Skeleton className="h-7 w-48" /> : `Welcome to ${settings.appName}`}
           </h2>
-          <p className="text-muted-foreground text-sm text-center mt-1">
+          <div className="text-muted-foreground text-sm text-center mt-1">
             {settingsLoading ? <Skeleton className="h-5 w-32" /> : "Please sign in to continue"}
-          </p>
+          </div>
         </div>
       {error && (
         <Alert variant="destructive" className="mb-4">
