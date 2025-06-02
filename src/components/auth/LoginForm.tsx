@@ -20,10 +20,10 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertTriangle, Eye, EyeOff } from "lucide-react"; // Added Eye icons
+import { AlertTriangle, Eye, EyeOff } from "lucide-react";
 import { useSettings } from "@/contexts/SettingsProvider";
 import Image from "next/image";
-import { Skeleton } from "@/components/ui/skeleton"; // Added Skeleton
+import { Skeleton } from "@/components/ui/skeleton";
 
 const formSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }),
@@ -64,7 +64,7 @@ export default function LoginForm() {
     <div className="w-full rounded-lg border bg-card text-card-foreground shadow-lg p-6 md:p-8">
        <div className="mb-6 flex flex-col items-center">
           {settingsLoading ? (
-            <Skeleton className="h-12 w-12 rounded-md mb-3" />
+            <Skeleton className="h-16 w-16 rounded-md mb-3" />
            ) : settings.logoUrl ? (
              <Image src={settings.logoUrl} alt={settings.appName || "App Logo"} width={64} height={64} className="mb-3 object-contain h-16 w-16" data-ai-hint="logo company"/>
           ) : (
@@ -111,7 +111,7 @@ export default function LoginForm() {
                       type={showPassword ? "text" : "password"} 
                       placeholder="••••••••" 
                       {...field} 
-                      className="pr-10" // Add padding for the icon
+                      className="pr-10"
                     />
                   </FormControl>
                   <Button 
