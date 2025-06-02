@@ -30,55 +30,45 @@ interface SettingsProviderProps {
 
 export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) => {
   const { db } = useFirebase();
-  const { user, loading: authLoading } = useAuth();
+  const { loading: authLoading } = useAuth(); // Removed 'user' dependency here for fetching global settings
   const [settings, setSettings] = useState<GlobalSettings>(DEFAULT_GLOBAL_SETTINGS);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let unsubscribe: (() => void) | undefined;
+    setLoading(true); // Indicate that settings are being loaded or re-evaluated
 
     if (authLoading) {
-      // If auth is still loading, settings are also effectively loading.
-      // Ensure we don't prematurely set settings loading to false.
-      if (!loading) setLoading(true);
-      return; // Don't proceed further until auth state is resolved.
+      // If auth is still loading, settings are effectively loading.
+      // setLoading(true) is already called.
+      return; // Don't proceed until auth state (and Firebase init) is resolved.
     }
 
-    // Auth state is resolved (authLoading is false)
-    if (user) {
-      // User is authenticated, try fetching settings
-      const settingsDocRef = doc(db, 'settings', 'global_settings');
-      unsubscribe = onSnapshot(
-        settingsDocRef,
-        (docSnap) => {
-          if (docSnap.exists()) {
-            setSettings(docSnap.data() as GlobalSettings);
-          } else {
-            // console.warn('Global settings document not found. Using default settings.');
-            setSettings(DEFAULT_GLOBAL_SETTINGS);
-          }
-          setLoading(false);
-        },
-        (error) => {
-          console.error('Error fetching global settings:', error);
-          // If permissions error or other error, fallback to defaults.
+    // Auth state is resolved (authLoading is false).
+    // Attempt to fetch global settings regardless of user login state.
+    const settingsDocRef = doc(db, 'settings', 'global_settings');
+    const unsubscribe = onSnapshot(
+      settingsDocRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          setSettings(docSnap.data() as GlobalSettings);
+        } else {
+          // console.warn('Global settings document not found. Using default settings.');
           setSettings(DEFAULT_GLOBAL_SETTINGS);
-          setLoading(false);
         }
-      );
-    } else {
-      // No user authenticated (e.g., on login page, or after logout)
-      // Use default settings and mark settings as loaded.
-      setSettings(DEFAULT_GLOBAL_SETTINGS);
-      setLoading(false);
-    }
+        setLoading(false); // Settings (or defaults) are now loaded
+      },
+      (error) => {
+        console.error('Error fetching global settings:', error);
+        // If permissions error or other error, fallback to defaults.
+        setSettings(DEFAULT_GLOBAL_SETTINGS);
+        setLoading(false);
+      }
+    );
 
     return () => {
-      if (unsubscribe) {
-        unsubscribe();
-      }
+      unsubscribe(); // Clean up the listener
     };
-  }, [db, authLoading, user, loading]); // Added 'loading' to dependency array to manage its state more effectively.
+  }, [db, authLoading]); // Dependencies: run when db instance changes or auth loading state changes.
 
   return (
     <SettingsContext.Provider value={{ settings, loading }}>
