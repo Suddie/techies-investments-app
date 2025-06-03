@@ -13,9 +13,9 @@ import {
   Home,
   Briefcase,
   FileBarChart, 
-  // Settings as SettingsIcon, // SettingsIcon is no longer used here
   Bell,
-  MessageSquarePlus 
+  MessageSquarePlus,
+  ClipboardList // Added ClipboardList
 } from 'lucide-react';
 
 export const ROLES: Record<UserRole, { name: UserRole; accessLevel: AccessLevel }> = {
@@ -68,8 +68,8 @@ export const NAVIGATION_LINKS = [
   { href: "/audit-log", label: "Audit Log", icon: History, adminOnly: false, requiredAccessLevel: 3 },
   { href: "/bank-management", label: "Bank Management", icon: Landmark, adminOnly: false, requiredAccessLevel: 2 },
   { href: "/admin/users", label: "User Management", icon: Users, adminOnly: true, requiredAccessLevel: 1 },
+  { href: "/admin/manage-contributions", label: "Manage Contributions", icon: ClipboardList, adminOnly: true, requiredAccessLevel: 1 },
   { href: "/admin/manage-notifications", label: "Manage Notifications", icon: MessageSquarePlus, adminOnly: true, requiredAccessLevel: 1 },
-  // { href: "/admin/settings", label: "App Settings", icon: SettingsIcon, adminOnly: true, requiredAccessLevel: 1 }, // Removed this line
 ];
 
     
