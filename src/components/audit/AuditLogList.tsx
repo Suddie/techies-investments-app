@@ -121,7 +121,10 @@ export default function AuditLogList() {
                     {auditLogs.map((log) => (
                     <TableRow key={log.id}>
                         <TableCell>{format(log.timestamp, "PPpp")}</TableCell>
-                        <TableCell>{log.userName} ({log.userId.substring(0,8)}...)</TableCell>
+                        <TableCell>
+                          {log.userName || 'System Action'} 
+                          ({typeof log.userId === 'string' && log.userId.length > 0 ? `${log.userId.substring(0,8)}...` : 'N/A'})
+                        </TableCell>
                         <TableCell><Badge variant="outline">{log.actionType}</Badge></TableCell>
                         <TableCell className="text-xs">
                             {typeof log.details === 'string' ? log.details : JSON.stringify(log.details)}
