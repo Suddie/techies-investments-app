@@ -4,43 +4,69 @@
 import MetricCard from "@/components/dashboard/MetricCard";
 import ProjectCompletionChart from "@/components/dashboard/ProjectCompletionChart";
 import PageHeader from "@/components/common/PageHeader";
-import { DollarSign, TrendingDown, Users, Landmark, BarChartBig, AlertTriangle, UserX, CircleDollarSign } from "lucide-react";
+import { DollarSign, TrendingDown, Users, Landmark, BarChartBig, AlertTriangle, UserX, CircleDollarSign, CalendarDays } from "lucide-react";
 import { useAuth } from "@/contexts/AuthProvider";
 import { useSettings } from "@/contexts/SettingsProvider";
 import NotificationList from "@/components/notifications/NotificationList";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { collection, query, where, orderBy, limit, Timestamp, getDocs, onSnapshot } from 'firebase/firestore';
 import { useFirebase } from '@/contexts/FirebaseProvider';
 import { Skeleton } from "@/components/ui/skeleton";
-// import { format } from "date-fns"; // No longer needed here
 import MilestoneProgressCard from "@/components/dashboard/MilestoneProgressCard";
 import type { UserProfile, Milestone } from "@/lib/types";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { format, parse, subMonths, addMonths, startOfMonth, endOfMonth } from 'date-fns';
+
+// Helper function to generate month options
+const generateMonthOptions = () => {
+  const options = [];
+  const currentDate = new Date();
+  // Go back 24 months from current month
+  for (let i = 24; i >= 0; i--) {
+    options.push(subMonths(currentDate, i));
+  }
+  // Go forward 6 months from current month
+  for (let i = 1; i <= 6; i++) {
+    options.push(addMonths(currentDate, i));
+  }
+  return options
+    .map(date => ({
+      value: format(date, 'yyyy-MM'),
+      label: format(date, 'MMMM yyyy'),
+    }))
+    .sort((a, b) => b.value.localeCompare(a.value)); // Sort descending for UI (most recent first)
+};
 
 
 export default function DashboardPage() {
   const { user, userProfile } = useAuth();
   const { settings } = useSettings();
   const { db } = useFirebase();
-  const shareValue = 1; // Share value is now fixed at 1
+  const shareValue = 1;
   const [isMounted, setIsMounted] = useState(false);
 
-  const [totalFunds, setTotalFunds] = useState<number | null>(null);
-  const [totalExpenditures, setTotalExpenditures] = useState<number | null>(null);
+  const [selectedMonthYear, setSelectedMonthYear] = useState<string>(format(new Date(), 'yyyy-MM'));
+  const monthYearOptions = useMemo(() => generateMonthOptions(), []);
+
+  const [bankBalanceForMonth, setBankBalanceForMonth] = useState<number | null>(null);
+  const [totalExpendituresMonth, setTotalExpendituresMonth] = useState<number | null>(null);
   const [totalContributionsMonth, setTotalContributionsMonth] = useState<number | null>(null);
+  
   const [userTotalContributions, setUserTotalContributions] = useState<number | null>(null);
   const [userTotalShares, setUserTotalShares] = useState<number | null>(null);
   const [overdueMembers, setOverdueMembers] = useState<UserProfile[]>([]);
-  const [projectCompletionPercentage, setProjectCompletionPercentage] = useState(0); // For dynamic project completion
+  const [projectCompletionPercentage, setProjectCompletionPercentage] = useState(0);
 
   const [loadingMetrics, setLoadingMetrics] = useState({
-    funds: true,
+    bankBalance: true,
     expenditures: true,
     contributionsMonth: true,
     userSummary: true,
     overdueMembers: true,
-    projectCompletion: true, // Added loading state for project completion
+    projectCompletion: true,
   });
 
   useEffect(() => {
@@ -53,35 +79,41 @@ export default function DashboardPage() {
 
     let unsubscribes: (() => void)[] = [];
 
-    // Fetch Total Funds (Latest Bank Balance)
-    const fetchTotalFunds = async () => {
-      setLoadingMetrics(prev => ({ ...prev, funds: true }));
-      try {
-        const bankBalancesRef = collection(db, "bankBalances");
-        const q = query(bankBalancesRef, orderBy("monthYear", "desc"), limit(1));
-        const querySnapshot = await getDocs(q);
-        if (!querySnapshot.empty) {
-          const latestBalanceDoc = querySnapshot.docs[0];
-          setTotalFunds(latestBalanceDoc.data().closingBalance);
-        } else {
-          setTotalFunds(0);
-        }
-      } catch (error) {
-        console.error("Error fetching total funds:", error);
-        setTotalFunds(0);
-      } finally {
-        setLoadingMetrics(prev => ({ ...prev, funds: false }));
-      }
-    };
-    fetchTotalFunds();
+    setLoadingMetrics(prev => ({ 
+        ...prev, 
+        bankBalance: true,
+        expenditures: true,
+        contributionsMonth: true,
+    }));
 
-    const today = new Date();
-    const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-    const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
+    const parsedSelectedDate = parse(selectedMonthYear, 'yyyy-MM', new Date());
+    const firstDayOfMonth = startOfMonth(parsedSelectedDate);
+    const lastDayOfMonth = endOfMonth(parsedSelectedDate);
     const firstDayTimestamp = Timestamp.fromDate(firstDayOfMonth);
     const lastDayTimestamp = Timestamp.fromDate(lastDayOfMonth);
+    
+    // Fetch Bank Balance for Selected Month
+    const fetchBankBalanceForMonth = async () => {
+      try {
+        const bankBalancesRef = collection(db, "bankBalances");
+        const q = query(bankBalancesRef, where("monthYear", "==", selectedMonthYear), limit(1));
+        const querySnapshot = await getDocs(q);
+        if (!querySnapshot.empty) {
+          const balanceDoc = querySnapshot.docs[0];
+          setBankBalanceForMonth(balanceDoc.data().closingBalance);
+        } else {
+          setBankBalanceForMonth(0); // No record for this month, assume 0
+        }
+      } catch (error) {
+        console.error("Error fetching bank balance for month:", error);
+        setBankBalanceForMonth(0);
+      } finally {
+        setLoadingMetrics(prev => ({ ...prev, bankBalance: false }));
+      }
+    };
+    fetchBankBalanceForMonth();
 
-    // Fetch Total Contributions (Current Month)
+    // Fetch Total Contributions (Selected Month)
     const contribQuery = query(
       collection(db, "contributions"),
       where("datePaid", ">=", firstDayTimestamp),
@@ -93,33 +125,34 @@ export default function DashboardPage() {
       setTotalContributionsMonth(sumVal);
       setLoadingMetrics(prev => ({ ...prev, contributionsMonth: false }));
     }, (error) => {
-        console.error("Error fetching monthly contributions:", error);
+        console.error(`Error fetching contributions for ${selectedMonthYear}:`, error);
         setTotalContributionsMonth(0);
         setLoadingMetrics(prev => ({ ...prev, contributionsMonth: false }));
     });
     unsubscribes.push(unsubscribeContrib);
 
-    // Fetch Total Expenditures (Current Month)
+    // Fetch Total Expenditures (Selected Month)
     const expensesQuery = query(
       collection(db, "expenses"),
-      where("date", ">=", firstDayTimestamp),
+      where("date", ">=", firstDayTimestamp), // Assuming 'date' field in expenses
       where("date", "<=", lastDayTimestamp)
     );
     const unsubscribeExpenses = onSnapshot(expensesQuery, (snapshot) => {
       let sumVal = 0;
       snapshot.forEach(doc => sumVal += doc.data().totalAmount);
-      setTotalExpenditures(sumVal);
+      setTotalExpendituresMonth(sumVal);
       setLoadingMetrics(prev => ({ ...prev, expenditures: false }));
     }, (error) => {
-        console.error("Error fetching monthly expenses:", error);
-        setTotalExpenditures(0);
+        console.error(`Error fetching expenses for ${selectedMonthYear}:`, error);
+        setTotalExpendituresMonth(0);
         setLoadingMetrics(prev => ({ ...prev, expenditures: false }));
     });
     unsubscribes.push(unsubscribeExpenses);
 
+
+    // ----- Metrics not dependent on selectedMonthYear -----
     // Fetch User's Total Contributions for Personal Summary
-    if (user && user.uid) {
-      setLoadingMetrics(prev => ({ ...prev, userSummary: true }));
+    if (user && user.uid && loadingMetrics.userSummary) { // Only fetch if not already loaded or user changes
       const userContribQuery = query(
         collection(db, "contributions"),
         where("userId", "==", user.uid)
@@ -139,97 +172,124 @@ export default function DashboardPage() {
         setLoadingMetrics(prev => ({ ...prev, userSummary: false }));
       });
       unsubscribes.push(unsubscribeUserContrib);
-    } else {
-        setLoadingMetrics(prev => ({ ...prev, userSummary: false }));
+    } else if (!user && !loadingMetrics.userSummary) { // User logged out, reset
         setUserTotalContributions(0);
         setUserTotalShares(0);
     }
 
-    // Fetch Overdue Members (Active users with penaltyBalance > 0)
-    setLoadingMetrics(prev => ({ ...prev, overdueMembers: true }));
-    const overdueMembersQuery = query(
-        collection(db, "users"),
-        where("status", "==", "Active"),
-        where("penaltyBalance", ">", 0),
-        orderBy("penaltyBalance", "desc")
-    );
-    const unsubscribeOverdueMembers = onSnapshot(overdueMembersQuery, (snapshot) => {
-        const members: UserProfile[] = [];
-        snapshot.forEach(doc => {
-            members.push({ uid: doc.id, ...doc.data() } as UserProfile);
-        });
-        setOverdueMembers(members);
-        setLoadingMetrics(prev => ({ ...prev, overdueMembers: false }));
-    }, (error) => {
-        console.error("Error fetching overdue members:", error);
-        setOverdueMembers([]);
-        setLoadingMetrics(prev => ({ ...prev, overdueMembers: false }));
-    });
-    unsubscribes.push(unsubscribeOverdueMembers);
 
-    // Fetch Milestones for Project Completion Chart
-    setLoadingMetrics(prev => ({ ...prev, projectCompletion: true }));
-    const milestonesQuery = query(collection(db, "milestones"));
-    const unsubscribeMilestones = onSnapshot(milestonesQuery, (snapshot) => {
-        let completedCount = 0;
-        const totalCount = snapshot.size;
-        snapshot.forEach(doc => {
-            const milestone = doc.data() as Milestone;
-            if (milestone.status === 'Completed') {
-                completedCount++;
-            }
+    // Fetch Overdue Members (Active users with penaltyBalance > 0) - Real-time
+    if (loadingMetrics.overdueMembers) { // Only fetch if not already loaded
+        const overdueMembersQuery = query(
+            collection(db, "users"),
+            where("status", "==", "Active"),
+            where("penaltyBalance", ">", 0),
+            orderBy("penaltyBalance", "desc")
+        );
+        const unsubscribeOverdueMembers = onSnapshot(overdueMembersQuery, (snapshot) => {
+            const members: UserProfile[] = [];
+            snapshot.forEach(doc => {
+                members.push({ uid: doc.id, ...doc.data() } as UserProfile);
+            });
+            setOverdueMembers(members);
+            setLoadingMetrics(prev => ({ ...prev, overdueMembers: false }));
+        }, (error) => {
+            console.error("Error fetching overdue members:", error);
+            setOverdueMembers([]);
+            setLoadingMetrics(prev => ({ ...prev, overdueMembers: false }));
         });
-        if (totalCount > 0) {
-            setProjectCompletionPercentage(Math.round((completedCount / totalCount) * 100));
-        } else {
-            setProjectCompletionPercentage(0); // Default to 0 if no milestones
-        }
-        setLoadingMetrics(prev => ({ ...prev, projectCompletion: false }));
-    }, (error) => {
-        console.error("Error fetching milestones for project completion:", error);
-        setProjectCompletionPercentage(0); // Default to 0 on error
-        setLoadingMetrics(prev => ({ ...prev, projectCompletion: false }));
-    });
-    unsubscribes.push(unsubscribeMilestones);
+        unsubscribes.push(unsubscribeOverdueMembers);
+    }
+
+    // Fetch Milestones for Project Completion Chart - Real-time
+    if (loadingMetrics.projectCompletion) { // Only fetch if not already loaded
+        const milestonesQuery = query(collection(db, "milestones"));
+        const unsubscribeMilestones = onSnapshot(milestonesQuery, (snapshot) => {
+            let completedCount = 0;
+            const totalCount = snapshot.size;
+            snapshot.forEach(doc => {
+                const milestone = doc.data() as Milestone;
+                if (milestone.status === 'Completed') {
+                    completedCount++;
+                }
+            });
+            if (totalCount > 0) {
+                setProjectCompletionPercentage(Math.round((completedCount / totalCount) * 100));
+            } else {
+                setProjectCompletionPercentage(0);
+            }
+            setLoadingMetrics(prev => ({ ...prev, projectCompletion: false }));
+        }, (error) => {
+            console.error("Error fetching milestones for project completion:", error);
+            setProjectCompletionPercentage(0);
+            setLoadingMetrics(prev => ({ ...prev, projectCompletion: false }));
+        });
+        unsubscribes.push(unsubscribeMilestones);
+    }
+    // ----- End of non-dependent metrics -----
 
 
     return () => {
       unsubscribes.forEach(unsub => unsub());
     };
-  }, [isMounted, db, user, settings.currencySymbol]); // Removed shareValue from dependencies as it's constant
+  }, [isMounted, db, user, settings.currencySymbol, selectedMonthYear]);
 
+
+  const selectedMonthLabel = useMemo(() => {
+    return format(parse(selectedMonthYear, 'yyyy-MM', new Date()), 'MMMM yyyy');
+  }, [selectedMonthYear]);
 
   return (
     <>
       <PageHeader
         title={`Welcome, ${userProfile?.name || "User"}!`}
         description="Here's an overview of your group's investments and activities."
+        actions={
+          <div className="flex items-center gap-2">
+            <Label htmlFor="month-selector" className="text-sm font-medium whitespace-nowrap">
+              <CalendarDays className="inline-block h-4 w-4 mr-1.5 text-muted-foreground" />
+              Summary for:
+            </Label>
+            <Select value={selectedMonthYear} onValueChange={setSelectedMonthYear}>
+              <SelectTrigger id="month-selector" className="w-[180px]">
+                <SelectValue placeholder="Select month" />
+              </SelectTrigger>
+              <SelectContent>
+                {monthYearOptions.map(option => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        }
       />
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
         <MetricCard
-          title="Total Funds"
-          value={!isMounted || loadingMetrics.funds ? <Skeleton className="h-7 w-3/4" /> : `${settings.currencySymbol} ${(totalFunds ?? 0).toLocaleString()}`}
+          title="Bank Balance"
+          value={!isMounted || loadingMetrics.bankBalance ? <Skeleton className="h-7 w-3/4" /> : `${settings.currencySymbol} ${(bankBalanceForMonth ?? 0).toLocaleString()}`}
           icon={Landmark}
-          description="Current available balance"
+          description={`Closing balance for ${selectedMonthLabel}`}
         />
         <MetricCard
           title="Monthly Expenditures"
-          value={!isMounted || loadingMetrics.expenditures ? <Skeleton className="h-7 w-3/4" /> : `${settings.currencySymbol} ${(totalExpenditures ?? 0).toLocaleString()}`}
+          value={!isMounted || loadingMetrics.expenditures ? <Skeleton className="h-7 w-3/4" /> : `${settings.currencySymbol} ${(totalExpendituresMonth ?? 0).toLocaleString()}`}
           icon={TrendingDown}
-          description="Expenses this month"
+          description={`Expenses for ${selectedMonthLabel}`}
         />
         <MetricCard
           title="Monthly Contributions"
           value={!isMounted || loadingMetrics.contributionsMonth ? <Skeleton className="h-7 w-3/4" /> : `${settings.currencySymbol} ${(totalContributionsMonth ?? 0).toLocaleString()}`}
           icon={CircleDollarSign}
-          description="Contributions this month"
+          description={`Contributions for ${selectedMonthLabel}`}
         />
          <MetricCard
-          title="Overdue Contributions"
+          title="Currently Overdue Members"
           value={!isMounted || loadingMetrics.overdueMembers ? <Skeleton className="h-7 w-1/4" /> : overdueMembers.length.toString()}
           icon={UserX}
-          description="Members with pending payments"
+          description="Members with current pending payments"
         />
       </div>
 
@@ -281,8 +341,7 @@ export default function DashboardPage() {
         <CardHeader>
             <CardTitle>Members with Outstanding Penalties</CardTitle>
             <CardDescription>
-              List of active members with a penalty balance greater than zero.
-              This list relies on the 'automatedPenaltyGeneration' Cloud Function for accuracy.
+              List of active members with a penalty balance greater than zero. (Real-time)
             </CardDescription>
         </CardHeader>
         <CardContent>
@@ -324,6 +383,4 @@ export default function DashboardPage() {
     </>
   );
 }
-
-
     
