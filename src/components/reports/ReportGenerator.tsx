@@ -9,7 +9,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { CalendarIcon, Download, FileText, Image as ImageIcon, Loader2 } from 'lucide-react';
-import { format, startOfDay, endOfDay } from 'date-fns';
+import { format, startOfDay, endOfDay, parse } from 'date-fns';
 import type { DateRange } from 'react-day-picker';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
@@ -20,15 +20,15 @@ import { useAuth } from '@/contexts/AuthProvider';
 import { useFirebase } from '@/contexts/FirebaseProvider';
 import { collection, query, where, getDocs, Timestamp, orderBy } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
-import type { Contribution, Penalty } from '@/lib/types';
+import type { Contribution, Penalty, Expense, RentInvoice, Professional, BankBalance } from '@/lib/types';
 
 type ReportType = 'member_statement' | 'financial_activity' | 'contribution_details' | 'penalty_details' | 'expense_details';
 
 const reportTypes: { value: ReportType; label: string }[] = [
   { value: 'member_statement', label: 'Member Statement (My Data)' },
-  { value: 'financial_activity', label: 'Monthly Financial Activity (Mock)' },
-  { value: 'contribution_details', label: 'Contribution Details (Mock)' },
-  // Add more report types here
+  { value: 'financial_activity', label: 'Financial Activity Summary' },
+  { value: 'contribution_details', label: 'Contribution Details' },
+  // Add more report types here: 'penalty_details', 'expense_details'
 ];
 
 interface StatementTransaction {
@@ -36,7 +36,7 @@ interface StatementTransaction {
   description: string;
   debit: number | string;
   credit: number | string;
-  balance?: number; // Balance will be calculated and added later
+  balance?: number;
 }
 
 export default function ReportGenerator() {
@@ -58,20 +58,19 @@ export default function ReportGenerator() {
     setLoading(true);
     setGeneratedReportData(null);
 
-    if (reportType === 'member_statement') {
-      if (!userProfile) {
-        toast({ title: "Authentication Error", description: "You must be logged in to generate a member statement.", variant: "destructive" });
-        setLoading(false);
-        return;
-      }
+    const reportStartDate = dateRange?.from ? startOfDay(dateRange.from) : null;
+    const reportEndDate = dateRange?.to ? endOfDay(dateRange.to) : null;
+    const dateRangeString = reportStartDate ? `${format(reportStartDate, "PPP")} - ${reportEndDate ? format(reportEndDate, "PPP") : 'Present'}` : "All Time";
 
-      try {
-        const reportStartDate = dateRange?.from ? startOfDay(dateRange.from) : null;
-        const reportEndDate = dateRange?.to ? endOfDay(dateRange.to) : null;
+    try {
+      if (reportType === 'member_statement') {
+        if (!userProfile) {
+          toast({ title: "Authentication Error", description: "You must be logged in to generate a member statement.", variant: "destructive" });
+          setLoading(false);
+          return;
+        }
 
         const allTransactions: StatementTransaction[] = [];
-
-        // Fetch all contributions for the user
         const contributionsRef = collection(db, "contributions");
         const contribQuery = query(contributionsRef, where("userId", "==", userProfile.uid), orderBy("datePaid", "asc"));
         const contribSnap = await getDocs(contribQuery);
@@ -81,51 +80,27 @@ export default function ReportGenerator() {
           const datePaid = contrib.datePaid instanceof Timestamp ? contrib.datePaid.toDate() : new Date(contrib.datePaid);
           
           if (contrib.amount > 0) {
-            allTransactions.push({
-              date: datePaid,
-              description: "Contribution Received",
-              debit: '',
-              credit: contrib.amount,
-            });
+            allTransactions.push({ date: datePaid, description: "Contribution Received", debit: '', credit: contrib.amount });
           }
           if (contrib.penaltyPaidAmount && contrib.penaltyPaidAmount > 0) {
-            allTransactions.push({
-              date: datePaid,
-              description: "Penalty Payment Received",
-              debit: '',
-              credit: contrib.penaltyPaidAmount,
-            });
+            allTransactions.push({ date: datePaid, description: "Penalty Payment Received", debit: '', credit: contrib.penaltyPaidAmount });
           }
         });
 
-        // Fetch all incurred penalties for the user
         try {
             const penaltiesRef = collection(db, "penalties");
             const penaltyQuery = query(penaltiesRef, where("userId", "==", userProfile.uid), orderBy("dateIssued", "asc"));
             const penaltySnap = await getDocs(penaltyQuery);
-
             penaltySnap.forEach(doc => {
                 const penalty = doc.data() as Penalty;
                 const dateIssued = penalty.dateIssued instanceof Timestamp ? penalty.dateIssued.toDate() : new Date(penalty.dateIssued);
-                allTransactions.push({
-                    date: dateIssued,
-                    description: penalty.description || "Penalty Incurred",
-                    debit: penalty.amount,
-                    credit: '',
-                });
+                allTransactions.push({ date: dateIssued, description: penalty.description || "Penalty Incurred", debit: penalty.amount, credit: '' });
             });
         } catch (penaltyError: any) {
-            console.warn("Could not fetch penalties, or 'penalties' collection might not exist:", penaltyError.message);
-            toast({ 
-                title: "Penalty Data Status", 
-                description: "Attempted to fetch penalty data. If there were issues (e.g., missing 'penalties' collection or necessary indexes), this section might be incomplete. The report will generate with available data.", 
-                variant: "default", 
-                duration: 8000
-            });
+            console.warn("Could not fetch penalties:", penaltyError.message);
         }
         
         allTransactions.sort((a, b) => a.date.getTime() - b.date.getTime());
-
         let openingBalance = 0;
         const statementItems: any[] = [];
         let runningBalance = 0;
@@ -138,79 +113,152 @@ export default function ReportGenerator() {
         runningBalance = openingBalance;
         
         for (const transaction of allTransactions) {
-          if (reportStartDate && transaction.date < reportStartDate) {
-            continue; 
-          }
-          if (reportEndDate && transaction.date > reportEndDate) {
-            continue; 
-          }
-          
+          if (reportStartDate && transaction.date < reportStartDate) continue; 
+          if (reportEndDate && transaction.date > reportEndDate) continue; 
           runningBalance += (typeof transaction.credit === 'number' ? transaction.credit : 0) - (typeof transaction.debit === 'number' ? transaction.debit : 0);
-          statementItems.push({
-            date: format(transaction.date, "yyyy-MM-dd"),
-            description: transaction.description,
-            debit: transaction.debit,
-            credit: transaction.credit,
-            balance: runningBalance 
-          });
+          statementItems.push({ date: format(transaction.date, "yyyy-MM-dd"), description: transaction.description, debit: transaction.debit, credit: transaction.credit, balance: runningBalance });
         }
         
-        const closingBalance = runningBalance;
-
-        const reportData: ReportData = {
+        setGeneratedReportData({
           title: `Member Statement - ${userProfile.name || 'Current User'}`,
-          dateRange: reportStartDate ? `${format(reportStartDate, "PPP")} - ${reportEndDate ? format(reportEndDate, "PPP") : 'Present'}` : "All Time",
+          dateRange: dateRangeString,
           currencySymbol: settings.currencySymbol || "MK",
-          columns: [
-            { accessorKey: "date", header: "Date" },
-            { accessorKey: "description", header: "Description" },
-            { accessorKey: "debit", header: `Debit (${settings.currencySymbol})` },
-            { accessorKey: "credit", header: `Credit (${settings.currencySymbol})` },
-            { accessorKey: "balance", header: `Balance (${settings.currencySymbol})` },
-          ],
+          columns: [ { accessorKey: "date", header: "Date" }, { accessorKey: "description", header: "Description" }, { accessorKey: "debit", header: `Debit (${settings.currencySymbol})` }, { accessorKey: "credit", header: `Credit (${settings.currencySymbol})` }, { accessorKey: "balance", header: `Balance (${settings.currencySymbol})` } ],
           data: statementItems,
-          summary: [
-            { label: "Opening Balance", value: openingBalance },
-            { label: "Total Credits During Period", value: statementItems.reduce((sum, item) => sum + (typeof item.credit === 'number' ? item.credit : 0), 0)},
-            { label: "Total Debits During Period", value: statementItems.reduce((sum, item) => sum + (typeof item.debit === 'number' ? item.debit : 0), 0)},
-            { label: "Closing Balance", value: closingBalance },
-          ],
-        };
-        setGeneratedReportData(reportData);
-      } catch (err: any) {
-        console.error("Error generating member statement:", err);
-        toast({ title: "Statement Error", description: `Could not generate member statement: ${err.message}. This might be due to missing Firestore indexes.`, variant: "destructive", duration: 10000 });
-        setGeneratedReportData(null);
+          summary: [ { label: "Opening Balance", value: openingBalance }, { label: "Total Credits During Period", value: statementItems.reduce((sum, item) => sum + (typeof item.credit === 'number' ? item.credit : 0), 0)}, { label: "Total Debits During Period", value: statementItems.reduce((sum, item) => sum + (typeof item.debit === 'number' ? item.debit : 0), 0)}, { label: "Closing Balance", value: runningBalance } ],
+        });
+
+      } else if (reportType === 'financial_activity') {
+        let totalContributions = 0, totalRentalIncome = 0, totalBankInterest = 0;
+        let totalOperatingExpenses = 0, totalProfessionalFees = 0, totalBankCharges = 0;
+
+        // Contributions
+        let contribQueryConstraints = [orderBy("datePaid", "asc")];
+        if (reportStartDate) contribQueryConstraints.push(where("datePaid", ">=", Timestamp.fromDate(reportStartDate)));
+        if (reportEndDate) contribQueryConstraints.push(where("datePaid", "<=", Timestamp.fromDate(reportEndDate)));
+        const contribSnap = await getDocs(query(collection(db, "contributions"), ...contribQueryConstraints));
+        contribSnap.forEach(doc => totalContributions += (doc.data() as Contribution).amount || 0);
+
+        // Rental Income
+        let rentQueryConstraints = [where("status", "==", "Paid"), orderBy("invoiceDate", "asc")];
+        if (reportStartDate) rentQueryConstraints.push(where("invoiceDate", ">=", Timestamp.fromDate(reportStartDate)));
+        if (reportEndDate) rentQueryConstraints.push(where("invoiceDate", "<=", Timestamp.fromDate(reportEndDate)));
+        const rentSnap = await getDocs(query(collection(db, "rentInvoices"), ...rentQueryConstraints));
+        rentSnap.forEach(doc => totalRentalIncome += (doc.data() as RentInvoice).rentAmount || 0);
+
+        // Bank Interest & Charges
+        let bankQueryConstraints = [orderBy("monthYear", "asc")];
+        if (reportStartDate) bankQueryConstraints.push(where("monthYear", ">=", format(reportStartDate, 'yyyy-MM')));
+        if (reportEndDate) bankQueryConstraints.push(where("monthYear", "<=", format(reportEndDate, 'yyyy-MM')));
+        const bankSnap = await getDocs(query(collection(db, "bankBalances"), ...bankQueryConstraints));
+        bankSnap.forEach(doc => {
+            const data = doc.data() as BankBalance;
+            totalBankInterest += data.interestEarned || 0;
+            totalBankCharges += data.bankCharges || 0;
+        });
+        
+        // Operating Expenses
+        let expenseQueryConstraints = [orderBy("date", "asc")];
+        if (reportStartDate) expenseQueryConstraints.push(where("date", ">=", Timestamp.fromDate(reportStartDate)));
+        if (reportEndDate) expenseQueryConstraints.push(where("date", "<=", Timestamp.fromDate(reportEndDate)));
+        const expenseSnap = await getDocs(query(collection(db, "expenses"), ...expenseQueryConstraints));
+        expenseSnap.forEach(doc => totalOperatingExpenses += (doc.data() as Expense).totalAmount || 0);
+
+        // Professional Fees
+        const profSnap = await getDocs(collection(db, "professionals"));
+        profSnap.forEach(profDoc => {
+            const prof = profDoc.data() as Professional;
+            if (prof.paymentHistory) {
+                prof.paymentHistory.forEach(payment => {
+                    const paymentDate = payment.date instanceof Timestamp ? payment.date.toDate() : new Date(payment.date);
+                    if ((!reportStartDate || paymentDate >= reportStartDate) && (!reportEndDate || paymentDate <= reportEndDate)) {
+                        totalProfessionalFees += payment.amountPaid || 0;
+                    }
+                });
+            }
+        });
+        
+        const activityData = [
+            { category: "Income", description: "Contributions Received", amount: totalContributions },
+            { category: "Income", description: "Rental Income", amount: totalRentalIncome },
+            { category: "Income", description: "Bank Interest Earned", amount: totalBankInterest },
+            { category: "Expenditure", description: "Operating Expenses", amount: totalOperatingExpenses },
+            { category: "Expenditure", description: "Professional Fees Paid", amount: totalProfessionalFees },
+            { category: "Expenditure", description: "Bank Charges", amount: totalBankCharges },
+        ];
+        const totalIncome = totalContributions + totalRentalIncome + totalBankInterest;
+        const totalExpenditure = totalOperatingExpenses + totalProfessionalFees + totalBankCharges;
+
+        setGeneratedReportData({
+            title: "Financial Activity Summary",
+            dateRange: dateRangeString,
+            currencySymbol: settings.currencySymbol || "MK",
+            columns: [ { accessorKey: "category", header: "Category" }, { accessorKey: "description", header: "Item" }, { accessorKey: "amount", header: `Amount (${settings.currencySymbol})` } ],
+            data: activityData.filter(item => item.amount !== 0), // Only show items with non-zero amounts
+            summary: [
+                { label: "Total Income", value: totalIncome },
+                { label: "Total Expenditure", value: totalExpenditure },
+                { label: "Net Activity (Surplus/Deficit)", value: totalIncome - totalExpenditure },
+            ],
+        });
+
+      } else if (reportType === 'contribution_details') {
+        let contribQueryConstraints = [orderBy("datePaid", "asc")];
+        if (reportStartDate) contribQueryConstraints.push(where("datePaid", ">=", Timestamp.fromDate(reportStartDate)));
+        if (reportEndDate) contribQueryConstraints.push(where("datePaid", "<=", Timestamp.fromDate(reportEndDate)));
+        
+        const contribSnap = await getDocs(query(collection(db, "contributions"), ...contribQueryConstraints));
+        const contributionsData: any[] = [];
+        let totalContribAmount = 0;
+        let totalPenaltyPaid = 0;
+
+        contribSnap.forEach(doc => {
+            const contrib = doc.data() as Contribution;
+            const datePaid = contrib.datePaid instanceof Timestamp ? contrib.datePaid.toDate() : new Date(contrib.datePaid);
+            contributionsData.push({
+                datePaid: format(datePaid, "yyyy-MM-dd HH:mm"),
+                memberName: contrib.memberName || "N/A",
+                amount: contrib.amount,
+                penaltyPaid: contrib.penaltyPaidAmount || 0,
+                monthsCovered: contrib.monthsCovered.map(m => format(parse(m + '-01', 'yyyy-MM-dd', new Date()), "MMM yyyy")).join(', '),
+                notes: contrib.notes || ""
+            });
+            totalContribAmount += contrib.amount || 0;
+            totalPenaltyPaid += contrib.penaltyPaidAmount || 0;
+        });
+
+        setGeneratedReportData({
+            title: "Contribution Details Report",
+            dateRange: dateRangeString,
+            currencySymbol: settings.currencySymbol || "MK",
+            columns: [
+                { accessorKey: "datePaid", header: "Date Paid" },
+                { accessorKey: "memberName", header: "Member Name" },
+                { accessorKey: "amount", header: `Amount (${settings.currencySymbol})` },
+                { accessorKey: "penaltyPaid", header: `Penalty Paid (${settings.currencySymbol})` },
+                { accessorKey: "monthsCovered", header: "Months Covered" },
+                { accessorKey: "notes", header: "Notes" },
+            ],
+            data: contributionsData,
+            summary: [
+                { label: "Total Contributions", value: totalContribAmount },
+                { label: "Total Penalties Paid", value: totalPenaltyPaid },
+                { label: "Number of Contributions", value: contributionsData.length },
+            ],
+        });
       }
 
-    } else {
-      // Existing mock data for other report types
-      const mockData: ReportData = {
-        title: reportTypes.find(rt => rt.value === reportType)?.label || "Report",
-        dateRange: dateRange?.from ? `${format(dateRange.from, "PPP")} - ${dateRange.to ? format(dateRange.to, "PPP") : 'Present'}` : "All Time",
-        currencySymbol: settings.currencySymbol || "MK",
-        columns: [
-            { accessorKey: "date", header: "Date" },
-            { accessorKey: "description", header: "Description" },
-            { accessorKey: "amount", header: "Amount" }
-        ],
-        data: [
-          { date: "2024-05-01", description: "Mock Contribution", amount: 5000 },
-          { date: "2024-05-15", description: "Mock Office Supplies Expense", amount: -1500 },
-        ],
-         summary: [
-          { label: "Total Debits (Mock)", value: 1500 },
-          { label: "Total Credits (Mock)", value: 5000 },
-          { label: "Net Activity (Mock)", value: 3500 },
-        ],
-      };
-      setGeneratedReportData(mockData);
+    } catch (err: any) {
+      console.error(`Error generating ${reportType} report:`, err);
+      toast({ title: "Report Generation Error", description: `Could not generate report: ${err.message}. This may be due to missing Firestore indexes for the queries involved.`, variant: "destructive", duration: 10000 });
+      setGeneratedReportData(null);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const exportToPDF = useCallback(() => {
-    if (reportViewRef.current) {
+    if (reportViewRef.current && generatedReportData) {
       html2canvas(reportViewRef.current, { scale: 2 }).then((canvas) => {
         const imgData = canvas.toDataURL('image/png');
         const pdf = new jsPDF('p', 'mm', 'a4');
@@ -219,27 +267,27 @@ export default function ReportGenerator() {
         const canvasWidth = canvas.width;
         const canvasHeight = canvas.height;
         
-        let width = pdfWidth - 20; // with some margin
-        let height = (canvasHeight * width) / canvasWidth; // maintain aspect ratio
+        let width = pdfWidth - 20; 
+        let height = (canvasHeight * width) / canvasWidth; 
         
-        if (height > pdfHeight - 20) { // If content is taller than page
-            height = pdfHeight - 20; // Cap height
-            width = (canvasWidth * height) / canvasHeight; // Adjust width to maintain aspect ratio
+        if (height > pdfHeight - 20) { 
+            height = pdfHeight - 20; 
+            width = (canvasWidth * height) / canvasHeight; 
         }
         const x = (pdfWidth - width) / 2;
         const y = 10; 
 
         pdf.addImage(imgData, 'PNG', x, y, width, height);
-        pdf.save(`${generatedReportData?.title.replace(/\s+/g, '_') || 'report'}.pdf`);
+        pdf.save(`${generatedReportData.title.replace(/\s+/g, '_') || 'report'}.pdf`);
       });
     }
   }, [generatedReportData]);
 
   const exportToJPG = useCallback(() => {
-    if (reportViewRef.current) {
+    if (reportViewRef.current && generatedReportData) {
       html2canvas(reportViewRef.current, { scale: 2 }).then((canvas) => {
         const link = document.createElement('a');
-        link.download = `${generatedReportData?.title.replace(/\s+/g, '_') || 'report'}.jpg`;
+        link.download = `${generatedReportData.title.replace(/\s+/g, '_') || 'report'}.jpg`;
         link.href = canvas.toDataURL('image/jpeg');
         link.click();
       });
@@ -323,4 +371,3 @@ export default function ReportGenerator() {
     </Card>
   );
 }
-
