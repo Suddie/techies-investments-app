@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import type { Contribution, ContributionFormValues } from '@/lib/types';
 import { useSettings } from '@/contexts/SettingsProvider';
 import { useFirebase } from '@/contexts/FirebaseProvider';
-import { collection, query, orderBy, onSnapshot, Timestamp, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, Timestamp, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { format, parse, addMonths, startOfMonth, setDate, getYear, getMonth, subMonths } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AlertTriangle, CheckCircle, ClipboardList, Search, XCircle, Edit2, MoreHorizontal } from 'lucide-react'; // Added Edit2, MoreHorizontal
