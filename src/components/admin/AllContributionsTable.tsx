@@ -9,7 +9,7 @@ import type { Contribution } from '@/lib/types';
 import { useSettings } from '@/contexts/SettingsProvider';
 import { useFirebase } from '@/contexts/FirebaseProvider';
 import { collection, query, orderBy, onSnapshot, Timestamp } from 'firebase/firestore';
-import { format, parse, addMonths, startOfMonth, setDate, getYear, getMonth } from 'date-fns';
+import { format, parse, addMonths, startOfMonth, setDate, getYear, getMonth, subMonths } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AlertTriangle, CheckCircle, ClipboardList, Search, XCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
