@@ -36,11 +36,21 @@ export interface Contribution {
   amount: number;
   penaltyPaidAmount?: number; 
   monthsCovered: string[]; 
-  datePaid: any; 
+  datePaid: any; // Can be Date or Firestore Timestamp
   isLate?: boolean; 
   notes?: string;
-  createdAt?: any; 
+  createdAt?: any; // Firestore Timestamp
+  updatedAt?: any; // Firestore Timestamp for edits
 }
+
+export interface ContributionFormValues {
+  amount: number;
+  monthsCovered: string[];
+  penaltyPaidAmount?: number;
+  notes?: string;
+  datePaid?: Date; // Added for admin edit
+}
+
 
 export interface GlobalSettings {
   appName: string;
@@ -331,15 +341,3 @@ export interface Penalty {
   relatedContributionId?: string; 
   createdAt?: any;
 }
-
-
-// Company Info type (for companyInfo collection, usually a single document)
-// export interface CompanyInfo {
-//   id?: string; // Typically a fixed ID like 'main'
-//   companyName: string;
-//   address?: string;
-//   registrationNumber?: string;
-//   taxPIN?: string; // This is separate from member TPINs
-//   // other relevant details
-// }
-

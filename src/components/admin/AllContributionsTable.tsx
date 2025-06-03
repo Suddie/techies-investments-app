@@ -5,36 +5,38 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import type { Contribution } from '@/lib/types';
+import type { Contribution, ContributionFormValues } from '@/lib/types';
 import { useSettings } from '@/contexts/SettingsProvider';
 import { useFirebase } from '@/contexts/FirebaseProvider';
-import { collection, query, orderBy, onSnapshot, Timestamp } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, Timestamp, doc, updateDoc } from 'firebase/firestore';
 import { format, parse, addMonths, startOfMonth, setDate, getYear, getMonth, subMonths } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
-import { AlertTriangle, CheckCircle, ClipboardList, Search, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle, ClipboardList, Search, XCircle, Edit2, MoreHorizontal } from 'lucide-react'; // Added Edit2, MoreHorizontal
 import { useToast } from '@/hooks/use-toast';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog"; // Added Dialog
+import ContributionForm from '@/components/contributions/ContributionForm'; // Added ContributionForm import
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+
 
 const generateMonthFilterOptions = () => {
   const options: { value: string; label: string }[] = [];
   const today = new Date();
-  // Go back 24 months
   for (let i = 24; i >= 0; i--) {
     options.push({
       value: format(subMonths(today, i), "yyyy-MM"),
       label: format(subMonths(today, i), "MMMM yyyy"),
     });
   }
-  // Go forward 6 months
   for (let i = 1; i <= 6; i++) {
      options.push({
       value: format(addMonths(today, i), "yyyy-MM"),
       label: format(addMonths(today, i), "MMMM yyyy"),
     });
   }
-  return options.sort((a, b) => b.value.localeCompare(a.value)); // Most recent first
+  return options.sort((a, b) => b.value.localeCompare(a.value)); 
 };
 
 
@@ -52,9 +54,12 @@ export default function AllContributionsTable() {
   const [selectedMonthFilter, setSelectedMonthFilter] = useState<string>("all");
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<"all" | "on-time" | "late">("all");
 
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [contributionToEdit, setContributionToEdit] = useState<Contribution | null>(null);
+
   const monthFilterOptions = useMemo(() => generateMonthFilterOptions(), []);
   const memberFilterOptions = useMemo(() => {
-    const members = new Map<string, string>(); // Store userId -> memberName
+    const members = new Map<string, string>(); 
     allContributions.forEach(contrib => {
       if (contrib.userId && contrib.memberName && !members.has(contrib.userId)) {
         members.set(contrib.userId, contrib.memberName);
@@ -74,14 +79,17 @@ export default function AllContributionsTable() {
       const fetchedContributions: Contribution[] = [];
       querySnapshot.forEach((doc) => {
         const data = doc.data();
+        // Ensure datePaid is a Date object
         const datePaid = data.datePaid instanceof Timestamp ? data.datePaid.toDate() : (data.datePaid ? new Date(data.datePaid) : new Date());
         const createdAt = data.createdAt instanceof Timestamp ? data.createdAt.toDate() : (data.createdAt ? new Date(data.createdAt) : new Date());
+        const updatedAt = data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : (data.updatedAt ? new Date(data.updatedAt) : undefined);
         
         fetchedContributions.push({ 
             id: doc.id, 
             ...data, 
             datePaid,
             createdAt,
+            updatedAt,
             monthsCovered: Array.isArray(data.monthsCovered) ? data.monthsCovered.sort() : [], 
             penaltyPaidAmount: data.penaltyPaidAmount || 0,
          } as Contribution);
@@ -120,7 +128,6 @@ export default function AllContributionsTable() {
 
   useEffect(() => {
     let filtered = [...allContributions];
-
     if (searchTerm) {
       filtered = filtered.filter(c => c.memberName?.toLowerCase().includes(searchTerm.toLowerCase()));
     }
@@ -143,6 +150,38 @@ export default function AllContributionsTable() {
     setSelectedMonthFilter("all");
     setSelectedStatusFilter("all");
   };
+
+  const handleEditContribution = (contribution: Contribution) => {
+    setContributionToEdit(contribution);
+    setIsEditDialogOpen(true);
+  };
+
+  const handleSaveEditedContribution = async (data: ContributionFormValues, contributionId: string) => {
+    try {
+      const contribDocRef = doc(db, "contributions", contributionId);
+      // Ensure datePaid is converted to Firestore Timestamp for update
+      const datePaidTimestamp = data.datePaid ? Timestamp.fromDate(data.datePaid) : serverTimestamp();
+      
+      const updateData: Partial<Contribution> = {
+        amount: data.amount,
+        monthsCovered: data.monthsCovered.sort(),
+        penaltyPaidAmount: data.penaltyPaidAmount || 0,
+        notes: data.notes || "",
+        datePaid: datePaidTimestamp, // Use the converted Timestamp
+        updatedAt: serverTimestamp(),
+        // isLate could be re-evaluated here if needed
+      };
+
+      await updateDoc(contribDocRef, updateData);
+      toast({ title: "Contribution Updated", description: "The contribution record has been successfully updated." });
+      setIsEditDialogOpen(false);
+      setContributionToEdit(null);
+    } catch (error: any) {
+      console.error("Error updating contribution:", error);
+      toast({ title: "Update Failed", description: error.message, variant: "destructive" });
+    }
+  };
+
 
   if (loading) {
     return (
@@ -168,10 +207,11 @@ export default function AllContributionsTable() {
   }
   
   return (
+    <>
     <Card className="w-full shadow-lg">
       <CardHeader>
         <CardTitle>All Member Contributions</CardTitle>
-        <CardDescription>A comprehensive record of all contributions received. Use filters to narrow down results.</CardDescription>
+        <CardDescription>A comprehensive record of all contributions received. Use filters to narrow down results. Edit actions available for Admins.</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="mb-6 p-4 border rounded-lg bg-muted/30">
@@ -239,6 +279,7 @@ export default function AllContributionsTable() {
                 <TableHead>Months Covered</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="hidden md:table-cell">Notes</TableHead>
+                <TableHead>Actions</TableHead>
                 </TableRow>
             </TableHeader>
             <TableBody>
@@ -273,6 +314,23 @@ export default function AllContributionsTable() {
                     <TableCell className="hidden md:table-cell max-w-xs truncate" title={contrib.notes || undefined}>
                         {contrib.notes || <span className="text-muted-foreground/70">-</span>}
                     </TableCell>
+                    <TableCell>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" className="h-8 w-8 p-0">
+                                    <span className="sr-only">Open menu</span>
+                                    <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                                <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                                <DropdownMenuItem onClick={() => handleEditContribution(contrib)}>
+                                    <Edit2 className="mr-2 h-4 w-4" /> Edit
+                                </DropdownMenuItem>
+                                {/* Void action can be added later */}
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    </TableCell>
                     </TableRow>
                 );
                 })}
@@ -286,5 +344,26 @@ export default function AllContributionsTable() {
         </CardFooter>
       )}
     </Card>
+
+    {/* Edit Contribution Dialog */}
+    <Dialog open={isEditDialogOpen} onOpenChange={(isOpen) => {
+        setIsEditDialogOpen(isOpen);
+        if (!isOpen) setContributionToEdit(null);
+    }}>
+        <DialogContent className="sm:max-w-md">
+            {contributionToEdit && (
+                <ContributionForm
+                    contributionToEdit={contributionToEdit}
+                    isAdminEditMode={true}
+                    onSaveAdminEdit={handleSaveEditedContribution}
+                    onCancelAdminEdit={() => {
+                        setIsEditDialogOpen(false);
+                        setContributionToEdit(null);
+                    }}
+                />
+            )}
+        </DialogContent>
+    </Dialog>
+    </>
   );
 }
