@@ -8,7 +8,7 @@ import { DollarSign, TrendingDown, Users, Landmark, BarChartBig, AlertTriangle, 
 import { useAuth } from "@/contexts/AuthProvider";
 import { useSettings } from "@/contexts/SettingsProvider";
 import NotificationList from "@/components/notifications/NotificationList";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import React, { useState, useEffect, useMemo } from 'react';
 import { collection, query, where, orderBy, limit, Timestamp, getDocs, onSnapshot } from 'firebase/firestore';
