@@ -10,6 +10,12 @@ export interface ReportColumn {
     header: string;
 }
 
+// Define the structure for _customData, particularly for memberTPINs
+interface CustomReportData {
+  memberTPINs?: { name: string; tpin: string }[];
+  // other custom fields can be added here if needed for other report types
+}
+
 export interface ReportData {
   title: string;
   dateRange: string;
@@ -17,6 +23,7 @@ export interface ReportData {
   columns: ReportColumn[];
   data: Record<string, any>[]; // Array of data objects
   summary?: { label: string; value: string | number }[];
+  _customData?: CustomReportData; // Add _customData here
 }
 
 interface ReportViewProps {
@@ -39,15 +46,17 @@ export default function ReportView({ reportData }: ReportViewProps) {
     return value; // Return as is if not a number (e.g. empty string for debit if no value)
   };
 
+  const memberTPINs = reportData._customData?.memberTPINs;
+
   return (
     <div className="p-4 text-black bg-white"> {/* Ensure text is black for PDF/JPG export */}
       <header className="mb-6 text-center">
         {!settingsLoading && displayLogoUrl && (
-            <Image 
-                src={displayLogoUrl} 
-                alt={`${globalSettings.appName} Logo`} 
-                width={80} 
-                height={80} 
+            <Image
+                src={displayLogoUrl}
+                alt={`${globalSettings.appName} Logo`}
+                width={80}
+                height={80}
                 className="mx-auto mb-2 object-contain"
                 data-ai-hint="logo company document"
             />
@@ -74,8 +83,8 @@ export default function ReportView({ reportData }: ReportViewProps) {
               <TableRow key={rowIndex}>
                 {reportData.columns.map((col) => (
                   <TableCell key={`${rowIndex}-${col.accessorKey}`}>
-                    { (col.accessorKey.toLowerCase().includes('amount') || 
-                       col.accessorKey.toLowerCase() === 'debit' || 
+                    { (col.accessorKey.toLowerCase().includes('amount') ||
+                       col.accessorKey.toLowerCase() === 'debit' ||
                        col.accessorKey.toLowerCase() === 'credit' ||
                        col.accessorKey.toLowerCase() === 'balance')
                       ? formatCurrencyValue(row[col.accessorKey], reportData.currencySymbol)
@@ -95,8 +104,8 @@ export default function ReportView({ reportData }: ReportViewProps) {
             <div key={index} className="flex justify-between text-sm mb-1">
               <span>{item.label}:</span>
               <span className="font-medium">
-                {typeof item.value === 'number' 
-                  ? `${reportData.currencySymbol} ${item.value.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` 
+                {typeof item.value === 'number'
+                  ? `${reportData.currencySymbol} ${item.value.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`
                   : item.value}
               </span>
             </div>
@@ -104,11 +113,33 @@ export default function ReportView({ reportData }: ReportViewProps) {
         </div>
       )}
 
+      {memberTPINs && memberTPINs.length > 0 && (
+        <div className="mt-6 pt-4 border-t">
+          <h3 className="text-lg font-semibold mb-2">Member Tax Payer Identification Numbers (TPINs)</h3>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="font-semibold">Member Name</TableHead>
+                <TableHead className="font-semibold">TPIN</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {memberTPINs.map((member, index) => (
+                <TableRow key={index}>
+                  <TableCell>{member.name}</TableCell>
+                  <TableCell>{member.tpin}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+
       <footer className="mt-8 pt-4 border-t text-center text-xs text-gray-500">
         <p>Generated on: {new Date().toLocaleDateString()}</p>
         <p>
-          {globalSettings.invoiceCompanyName || globalSettings.appName} - 
-          {globalSettings.invoiceAddress || "Investment Group"} - 
+          {globalSettings.invoiceCompanyName || globalSettings.appName} -
+          {globalSettings.invoiceAddress || "Investment Group"} -
           {globalSettings.invoiceContact}
         </p>
         <p className="mt-2 italic">This is an automatically generated report. Please verify all figures.</p>
