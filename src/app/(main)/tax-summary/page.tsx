@@ -33,13 +33,14 @@ import { format, parse, startOfYear, endOfYear } from "date-fns";
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { useToast } from "@/hooks/use-toast";
-import ReportView, { type ReportData } from '@/components/reports/ReportView'; // Assuming ReportView is correctly imported from reports folder
+import ReportView, { type ReportData } from '@/components/reports/ReportView';
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { CalendarIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { DateRange } from "react-day-picker";
 import { useAuth } from "@/contexts/AuthProvider";
+import { FormDescription } from "@/components/ui/form";
 
 
 const generateYearOptions = () => {
@@ -90,6 +91,7 @@ export default function TaxSummaryPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [summaryData, setSummaryData] = useState<TaxSummaryData | null>(null);
+  const [generatedReportData, setGeneratedReportData] = useState<ReportData | null>(null); // Correctly declare as state
   const { settings: globalSettings } = useSettings();
   const summaryViewRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
@@ -101,7 +103,7 @@ export default function TaxSummaryPage() {
       toast({ title: "Selection Missing", description: "Please select a report type.", variant: "destructive" });
       return;
     }
-    if (!selectedYear && selectedReportType !== 'member_statement' && !dateRange) { // Year or date range needed for most reports
+    if (!selectedYear && selectedReportType !== 'member_statement' && !dateRange) {
         toast({ title: "Selection Missing", description: "Please select a year or date range.", variant: "destructive" });
         return;
     }
@@ -109,6 +111,7 @@ export default function TaxSummaryPage() {
     setLoading(true);
     setError(null);
     setSummaryData(null);
+    setGeneratedReportData(null); // Clear previous report data
 
     const reportStartDate = dateRange?.from ? startOfYear(dateRange.from) : (selectedYear ? Timestamp.fromDate(startOfYear(new Date(parseInt(selectedYear, 10), 0, 1))) : null);
     const reportEndDate = dateRange?.to ? endOfYear(dateRange.to) : (selectedYear ? Timestamp.fromDate(endOfYear(new Date(parseInt(selectedYear, 10), 11, 31))) : null);
@@ -172,17 +175,9 @@ export default function TaxSummaryPage() {
           statementItems.push({ date: format(transaction.date, "yyyy-MM-dd"), description: transaction.description, debit: transaction.debit, credit: transaction.credit, balance: runningBalance });
         }
         
-        setSummaryData({
-          year: selectedYear || format(new Date(), 'yyyy'), // Fallback year if not selected but report type implies it
-          totalIncome: statementItems.reduce((sum, item) => sum + (typeof item.credit === 'number' ? item.credit : 0), 0), // This is not total income in this context
-          totalExpenditure: statementItems.reduce((sum, item) => sum + (typeof item.debit === 'number' ? item.debit : 0), 0), // This is not total expenditure
-          surplusDeficit: runningBalance, // This is closing balance
-          incomeBreakdown: [], // Not applicable for member statement
-          expenditureBreakdown: [], // Not applicable for member statement
-          memberTPINs: [{ name: userProfile.name || "Current User", tpin: userProfile.tpin || "Not Provided" }],
-        });
-        // Overwrite ReportData for member statement structure
-         setGeneratedReportData({
+        // This TaxSummaryData is more for the 'financial_activity' type.
+        // For 'member_statement', we directly set generatedReportData.
+        setGeneratedReportData({
           title: `Member Statement - ${userProfile.name || 'Current User'}`,
           dateRange: dateRangeString,
           currencySymbol: globalSettings.currencySymbol || "MK",
@@ -197,23 +192,19 @@ export default function TaxSummaryPage() {
         let totalOperatingExpenses = 0, totalProfessionalFees = 0, totalBankCharges = 0;
         const memberTPINs: { name: string; tpin: string }[] = [];
 
-        // Contributions
         let contribQueryConstraints: any[] = [where("status", "!=", "voided"), orderBy("datePaid", "asc")];
         if (reportStartDate) contribQueryConstraints.push(where("datePaid", ">=", reportStartDate));
         if (reportEndDate) contribQueryConstraints.push(where("datePaid", "<=", reportEndDate));
         const contribSnap = await getDocs(query(collection(db, "contributions"), ...contribQueryConstraints));
         contribSnap.forEach(doc => totalContributions += (doc.data() as Contribution).amount || 0);
 
-        // Rental Income
         let rentQueryConstraints: any[] = [where("status", "==", "Paid"), orderBy("invoiceDate", "asc")];
         if (reportStartDate) rentQueryConstraints.push(where("invoiceDate", ">=", reportStartDate));
         if (reportEndDate) rentQueryConstraints.push(where("invoiceDate", "<=", reportEndDate));
         const rentSnap = await getDocs(query(collection(db, "rentInvoices"), ...rentQueryConstraints));
         rentSnap.forEach(doc => totalRentalIncome += (doc.data() as RentInvoice).rentAmount || 0);
 
-        // Bank Interest & Charges
         let bankQueryConstraints: any[] = [orderBy("monthYear", "asc")];
-        // Adjust bank balance query if dateRange is used instead of selectedYear
         const bankStartMonth = reportStartDate ? format(reportStartDate instanceof Timestamp ? reportStartDate.toDate() : reportStartDate, 'yyyy-MM') : null;
         const bankEndMonth = reportEndDate ? format(reportEndDate instanceof Timestamp ? reportEndDate.toDate() : reportEndDate, 'yyyy-MM') : null;
 
@@ -227,14 +218,12 @@ export default function TaxSummaryPage() {
             totalBankCharges += data.bankCharges || 0;
         });
         
-        // Operating Expenses
         let expenseQueryConstraints: any[] = [orderBy("date", "asc")];
         if (reportStartDate) expenseQueryConstraints.push(where("date", ">=", reportStartDate));
         if (reportEndDate) expenseQueryConstraints.push(where("date", "<=", reportEndDate));
         const expenseSnap = await getDocs(query(collection(db, "expenses"), ...expenseQueryConstraints));
         expenseSnap.forEach(doc => totalOperatingExpenses += (doc.data() as Expense).totalAmount || 0);
 
-        // Professional Fees
         const profSnap = await getDocs(collection(db, "professionals"));
         profSnap.forEach(profDoc => {
             const prof = profDoc.data() as Professional;
@@ -250,7 +239,6 @@ export default function TaxSummaryPage() {
             }
         });
 
-         // Fetch Users for TPIN list (only for financial_activity)
         const usersSnap = await getDocs(query(collection(db, "users"), orderBy("name", "asc")));
         usersSnap.forEach((userDoc) => {
             const user = userDoc.data() as UserProfile;
@@ -262,7 +250,7 @@ export default function TaxSummaryPage() {
         const totalIncome = totalContributions + totalRentalIncome + totalBankInterest + totalOtherIncome;
         const totalExpenditure = totalOperatingExpenses + totalProfessionalFees + totalBankCharges;
 
-        setSummaryData({
+        const currentSummaryData = {
             year: selectedYear || format(new Date(), 'yyyy'),
             totalIncome,
             totalExpenditure,
@@ -278,16 +266,17 @@ export default function TaxSummaryPage() {
               { label: "Bank Charges", amount: totalBankCharges },
             ].filter(item => item.amount !== 0),
             memberTPINs: memberTPINs,
-        });
-        // Set ReportData for ReportView
+        };
+        setSummaryData(currentSummaryData);
+
         setGeneratedReportData({
-            title: "Financial Activity Summary",
+            title: `Financial Activity Summary`,
             dateRange: dateRangeString,
             currencySymbol: globalSettings.currencySymbol || "MK",
             columns: [ { accessorKey: "category", header: "Category" }, { accessorKey: "description", header: "Item" }, { accessorKey: "amount", header: `Amount (${globalSettings.currencySymbol})` } ],
             data: [
-                ...summaryData?.incomeBreakdown.map(item => ({ category: "Income", description: item.label, amount: item.amount })) || [],
-                ...summaryData?.expenditureBreakdown.map(item => ({ category: "Expenditure", description: item.label, amount: item.amount })) || [],
+                ...currentSummaryData.incomeBreakdown.map(item => ({ category: "Income", description: item.label, amount: item.amount })),
+                ...currentSummaryData.expenditureBreakdown.map(item => ({ category: "Expenditure", description: item.label, amount: item.amount })),
             ].filter(item => item.amount !==0),
             summary: [
                 { label: "Total Income", value: totalIncome },
@@ -296,12 +285,11 @@ export default function TaxSummaryPage() {
             ],
         });
       }
-      // Add other report types here
       toast({title: "Report Generated", description: `Report for ${selectedReportType} covering ${dateRangeString} is ready.`});
     } catch (err: any) {
       console.error(`Error generating ${selectedReportType} report:`, err);
       toast({ title: "Report Generation Error", description: `Could not generate report: ${err.message}. This may be due to missing Firestore indexes.`, variant: "destructive", duration: 10000 });
-      setGeneratedReportData(null); // Clear on error
+      setGeneratedReportData(null);
     } finally {
       setLoading(false);
     }
@@ -430,7 +418,7 @@ export default function TaxSummaryPage() {
             </Button>
 
 
-          {(summaryData || generatedReportData) && ( // Check both states as member statement uses generatedReportData
+          {(summaryData || generatedReportData) && (
             <div className="mt-8">
               <div className="flex justify-end gap-2 mb-4">
                   <Button variant="outline" onClick={exportToPDF} disabled={loading}><Download className="mr-2 h-4 w-4" /> Export PDF</Button>
@@ -440,23 +428,22 @@ export default function TaxSummaryPage() {
                  {selectedReportType === 'financial_activity' && summaryData ? (
                      <ReportView reportData={{
                         title: `Financial Summary for ${summaryData.year}`,
-                        dateRange: dateRangeString,
+                        dateRange: dateRangeString, // Use the calculated dateRangeString
                         currencySymbol: globalSettings.currencySymbol || "MK",
-                        columns: [], // Not directly used by this specialized view structure
-                        data: [], // Not directly used
+                        columns: [], 
+                        data: [], 
                         summary: [
                             { label: "Total Income", value: summaryData.totalIncome },
                             { label: "Total Expenditure", value: summaryData.totalExpenditure },
                             { label: "Net Surplus / Deficit", value: summaryData.surplusDeficit }
                         ],
-                        // For custom rendering within ReportView or similar
-                        _customData: {
+                        _customData: { // For custom rendering logic specific to financial_activity
                             incomeBreakdown: summaryData.incomeBreakdown,
                             expenditureBreakdown: summaryData.expenditureBreakdown,
                             memberTPINs: summaryData.memberTPINs,
                             surplusDeficit: summaryData.surplusDeficit,
                         }
-                    } as any} /> // Cast as any to pass custom structure if ReportView is adapted
+                    } as any} />
                  ) : generatedReportData ? (
                     <ReportView reportData={generatedReportData} />
                  ) : <p>Report data is being prepared...</p>}
