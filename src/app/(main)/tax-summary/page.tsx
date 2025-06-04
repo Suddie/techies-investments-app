@@ -96,16 +96,21 @@ export default function TaxSummaryPage() {
 
         // Contributions
         const contributionsRef = collection(db, "contributions");
-        let contribQuery = query(contributionsRef,
-            where("status", "!=", "voided"),
-            orderBy("datePaid", "asc")
-        );
+        // Removed explicit orderBy("datePaid", "asc") from here
+        let contribQuery = query(contributionsRef, where("status", "!=", "voided"));
+        
         if (reportStartDate) {
             contribQuery = query(contribQuery, where("datePaid", ">=", reportStartDate));
         }
         if (reportEndDate) {
-            contribQuery = query(contribQuery, where("datePaid", "<=", reportEndDate));
+            // Add orderBy before the second range filter if not already present and different field
+            // For same field, orderBy is not strictly needed before both range filters
+            contribQuery = query(contribQuery, where("datePaid", "<=", reportEndDate), orderBy("datePaid", "asc"));
+        } else {
+            // If only startDate, we might still want to order
+             contribQuery = query(contribQuery, orderBy("datePaid", "asc"));
         }
+
         const contribSnap = await getDocs(contribQuery);
         contribSnap.forEach(doc => totalContributions += (doc.data() as Contribution).amount || 0);
 
@@ -206,7 +211,7 @@ export default function TaxSummaryPage() {
       toast({title: "Annual Summary Generated", description: `Summary for ${selectedYear} is ready.`});
     } catch (err: any) {
       console.error(`Error generating annual financial summary:`, err);
-      toast({ title: "Summary Generation Error", description: `Could not generate summary: ${err.message}. This may be due to missing Firestore indexes.`, variant: "destructive", duration: 10000 });
+      toast({ title: "Summary Generation Error", description: `Could not generate summary: ${err.message}. This may be due to missing Firestore indexes. Check the developer console for a link to create the index if provided by Firestore.`, variant: "destructive", duration: 10000 });
       setGeneratedReportData(null);
       setSummaryData(null);
     } finally {
@@ -268,9 +273,9 @@ export default function TaxSummaryPage() {
       <Card className="w-full">
         <CardHeader>
           <CardTitle>Generate Annual Summary</CardTitle>
-          <CardDescription>
+          <p className="text-sm text-muted-foreground">
             Select a financial year to generate the summary. This report will include all non-voided contributions, rental income, bank interest, operating expenses, professional fees paid, and bank charges for the selected year.
-          </CardDescription>
+          </p>
         </CardHeader>
         <CardContent className="space-y-6">
           {error && (
