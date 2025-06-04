@@ -40,7 +40,8 @@ import { CalendarIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { DateRange } from "react-day-picker";
 import { useAuth } from "@/contexts/AuthProvider";
-import { FormDescription } from "@/components/ui/form";
+// FormDescription removed from here as it's not part of a form
+// import { FormDescription } from "@/components/ui/form";
 
 
 const generateYearOptions = () => {
@@ -91,7 +92,7 @@ export default function TaxSummaryPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [summaryData, setSummaryData] = useState<TaxSummaryData | null>(null);
-  const [generatedReportData, setGeneratedReportData] = useState<ReportData | null>(null); // Correctly declare as state
+  const [generatedReportData, setGeneratedReportData] = useState<ReportData | null>(null); 
   const { settings: globalSettings } = useSettings();
   const summaryViewRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
@@ -111,7 +112,7 @@ export default function TaxSummaryPage() {
     setLoading(true);
     setError(null);
     setSummaryData(null);
-    setGeneratedReportData(null); // Clear previous report data
+    setGeneratedReportData(null); 
 
     const reportStartDate = dateRange?.from ? startOfYear(dateRange.from) : (selectedYear ? Timestamp.fromDate(startOfYear(new Date(parseInt(selectedYear, 10), 0, 1))) : null);
     const reportEndDate = dateRange?.to ? endOfYear(dateRange.to) : (selectedYear ? Timestamp.fromDate(endOfYear(new Date(parseInt(selectedYear, 10), 11, 31))) : null);
@@ -188,7 +189,6 @@ export default function TaxSummaryPage() {
       } else if (selectedReportType === 'financial_activity') {
         let totalContributions = 0, totalRentalIncome = 0, totalBankInterest = 0, totalOtherIncome = 0;
         let totalOperatingExpenses = 0, totalProfessionalFees = 0, totalBankCharges = 0;
-        const memberTPINs: { name: string; tpin: string }[] = [];
 
         let contribQueryConstraints: any[] = [where("status", "!=", "voided"), orderBy("datePaid", "asc")];
         if (reportStartDate) contribQueryConstraints.push(where("datePaid", ">=", reportStartDate));
@@ -384,7 +384,7 @@ export default function TaxSummaryPage() {
                   ))}
                 </SelectContent>
               </Select>
-               <FormDescription className="text-xs">Overrides date range if selected. Not used if "Member Statement" is chosen.</FormDescription>
+               <p className="text-xs text-muted-foreground">Overrides date range if selected. Not used if "Member Statement" is chosen.</p>
             </div>
              <div className="space-y-1.5">
                 <Label htmlFor="date-range-selector">Or Custom Date Range</Label>
@@ -403,7 +403,7 @@ export default function TaxSummaryPage() {
                     <Calendar initialFocus mode="range" defaultMonth={dateRange?.from} selected={dateRange} onSelect={setDateRange} numberOfMonths={2}/>
                   </PopoverContent>
                 </Popover>
-                 <FormDescription className="text-xs">Overrides year selection if set. Used for all report types.</FormDescription>
+                 <p className="text-xs text-muted-foreground">Overrides year selection if set. Used for all report types.</p>
             </div>
           </div>
            <Button
