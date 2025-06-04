@@ -16,7 +16,18 @@ import { useToast } from '@/hooks/use-toast';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogTrigger, AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent as AlertContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger as AlertTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent as AlertContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger as AlertTrigger
+} from "@/components/ui/alert-dialog";
 import ContributionForm from '@/components/contributions/ContributionForm';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
@@ -36,7 +47,7 @@ const generateMonthFilterOptions = () => {
       label: format(addMonths(today, i), "MMMM yyyy"),
     });
   }
-  return options.sort((a, b) => b.value.localeCompare(a.value)); 
+  return options.sort((a, b) => b.value.localeCompare(a.value));
 };
 
 
@@ -61,7 +72,7 @@ export default function AllContributionsTable() {
 
   const monthFilterOptions = useMemo(() => generateMonthFilterOptions(), []);
   const memberFilterOptions = useMemo(() => {
-    const members = new Map<string, string>(); 
+    const members = new Map<string, string>();
     allContributions.forEach(contrib => {
       if (contrib.userId && contrib.memberName && !members.has(contrib.userId)) {
         members.set(contrib.userId, contrib.memberName);
@@ -84,14 +95,14 @@ export default function AllContributionsTable() {
         const datePaid = data.datePaid instanceof Timestamp ? data.datePaid.toDate() : (data.datePaid ? new Date(data.datePaid) : new Date());
         const createdAt = data.createdAt instanceof Timestamp ? data.createdAt.toDate() : (data.createdAt ? new Date(data.createdAt) : new Date());
         const updatedAt = data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : (data.updatedAt ? new Date(data.updatedAt) : undefined);
-        
-        fetchedContributions.push({ 
-            id: doc.id, 
-            ...data, 
+
+        fetchedContributions.push({
+            id: doc.id,
+            ...data,
             datePaid,
             createdAt,
             updatedAt,
-            monthsCovered: Array.isArray(data.monthsCovered) ? data.monthsCovered.sort() : [], 
+            monthsCovered: Array.isArray(data.monthsCovered) ? data.monthsCovered.sort() : [],
             penaltyPaidAmount: data.penaltyPaidAmount || 0,
             status: data.status || 'active',
          } as Contribution);
@@ -121,7 +132,7 @@ export default function AllContributionsTable() {
       const firstMonthCoveredStr = contrib.monthsCovered[0];
       const firstMonthDate = parse(firstMonthCoveredStr + '-01', 'yyyy-MM-dd', new Date());
       const monthFollowingFirstMonth = addMonths(startOfMonth(firstMonthDate), 1);
-      const dueDate = setDate(monthFollowingFirstMonth, 7); 
+      const dueDate = setDate(monthFollowingFirstMonth, 7);
       const paymentDate = new Date(contrib.datePaid);
       return paymentDate.getFullYear() > dueDate.getFullYear() ||
              (paymentDate.getFullYear() === dueDate.getFullYear() && paymentDate.getMonth() > dueDate.getMonth()) ||
@@ -171,7 +182,7 @@ export default function AllContributionsTable() {
     try {
       const contribDocRef = doc(db, "contributions", contributionId);
       const datePaidTimestamp = data.datePaid ? Timestamp.fromDate(data.datePaid) : serverTimestamp();
-      
+
       const updateData: Partial<Contribution> = {
         amount: data.amount,
         monthsCovered: data.monthsCovered.sort(),
@@ -251,7 +262,7 @@ export default function AllContributionsTable() {
       </Card>
     );
   }
-  
+
   return (
     <>
     <Card className="w-full shadow-lg">
@@ -377,7 +388,7 @@ export default function AllContributionsTable() {
             </Table>
         )}
       </CardContent>
-      {displayedContributions.length > 15 && ( 
+      {displayedContributions.length > 15 && (
         <CardFooter>
             <p className="text-xs text-muted-foreground">Displaying {displayedContributions.length} of {allContributions.length} total contributions.</p>
         </CardFooter>
@@ -408,7 +419,7 @@ export default function AllContributionsTable() {
             <AlertDialogHeader>
             <AlertDialogTitle>Are you sure you want to void this contribution?</AlertDialogTitle>
             <AlertDialogDescription>
-                This action will mark the contribution by "{contributionToVoid?.memberName}" for period(s) {contributionToVoid?.monthsCovered.join(', ')} as voided. 
+                This action will mark the contribution by "{contributionToVoid?.memberName}" for period(s) {contributionToVoid?.monthsCovered.join(', ')} as voided.
                 This cannot be undone easily.
             </AlertDialogDescription>
             </AlertDialogHeader>
