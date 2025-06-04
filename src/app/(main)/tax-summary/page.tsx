@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import { useSettings } from "@/contexts/SettingsProvider";
 import { useFirebase } from "@/contexts/FirebaseProvider";
 import {
@@ -25,10 +25,9 @@ import type {
   Professional,
   BankBalance,
   UserProfile,
-  Penalty, // Keep Penalty if it might be used for other calculations in future, or remove if truly unused.
 } from "@/lib/types";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertTriangle, Download, ImageIcon, Loader2, FileText } from "lucide-react"; 
+import { AlertTriangle, Download, ImageIcon, Loader2, FileText } from "lucide-react";
 import { format, startOfYear, endOfYear, parse } from "date-fns";
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
@@ -59,14 +58,14 @@ interface TaxSummaryData {
 
 export default function TaxSummaryPage() {
   const { db } = useFirebase();
-  const { userProfile } = useAuth(); // userProfile might be needed for permissions, but not directly for summary data
+  const { userProfile } = useAuth();
   const [selectedYear, setSelectedYear] = useState<string | undefined>(
     String(new Date().getFullYear())
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [summaryData, setSummaryData] = useState<TaxSummaryData | null>(null); // Holds the structured summary
-  const [generatedReportData, setGeneratedReportData] = useState<ReportData | null>(null); // For ReportView
+  const [summaryData, setSummaryData] = useState<TaxSummaryData | null>(null);
+  const [generatedReportData, setGeneratedReportData] = useState<ReportData | null>(null);
   const { settings: globalSettings } = useSettings();
   const summaryViewRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
@@ -82,7 +81,7 @@ export default function TaxSummaryPage() {
     setLoading(true);
     setError(null);
     setSummaryData(null);
-    setGeneratedReportData(null); 
+    setGeneratedReportData(null);
 
     const yearDate = new Date(parseInt(selectedYear, 10), 0, 1);
     const reportStartDate = Timestamp.fromDate(startOfYear(yearDate));
@@ -95,18 +94,30 @@ export default function TaxSummaryPage() {
         let totalContributions = 0, totalRentalIncome = 0, totalBankInterest = 0, totalOtherIncome = 0;
         let totalOperatingExpenses = 0, totalProfessionalFees = 0, totalBankCharges = 0;
 
-        let contribQueryConstraints: any[] = [where("status", "!=", "voided"), orderBy("datePaid", "asc")];
-        if (reportStartDate) contribQueryConstraints.push(where("datePaid", ">=", reportStartDate));
-        if (reportEndDate) contribQueryConstraints.push(where("datePaid", "<=", reportEndDate));
-        const contribSnap = await getDocs(query(collection(db, "contributions"), ...contribQueryConstraints));
+        // Contributions
+        const contributionsRef = collection(db, "contributions");
+        let contribQuery = query(contributionsRef,
+            where("status", "!=", "voided"),
+            orderBy("datePaid", "asc")
+        );
+        if (reportStartDate) {
+            contribQuery = query(contribQuery, where("datePaid", ">=", reportStartDate));
+        }
+        if (reportEndDate) {
+            contribQuery = query(contribQuery, where("datePaid", "<=", reportEndDate));
+        }
+        const contribSnap = await getDocs(contribQuery);
         contribSnap.forEach(doc => totalContributions += (doc.data() as Contribution).amount || 0);
 
+
+        // Rental Income
         let rentQueryConstraints: any[] = [where("status", "==", "Paid"), orderBy("invoiceDate", "asc")];
         if (reportStartDate) rentQueryConstraints.push(where("invoiceDate", ">=", reportStartDate));
         if (reportEndDate) rentQueryConstraints.push(where("invoiceDate", "<=", reportEndDate));
         const rentSnap = await getDocs(query(collection(db, "rentInvoices"), ...rentQueryConstraints));
         rentSnap.forEach(doc => totalRentalIncome += (doc.data() as RentInvoice).rentAmount || 0);
 
+        // Bank Interest & Charges
         let bankQueryConstraints: any[] = [orderBy("monthYear", "asc")];
         const bankStartMonth = reportStartDate ? format(reportStartDate.toDate(), 'yyyy-MM') : null;
         const bankEndMonth = reportEndDate ? format(reportEndDate.toDate(), 'yyyy-MM') : null;
@@ -121,12 +132,14 @@ export default function TaxSummaryPage() {
             totalBankCharges += data.bankCharges || 0;
         });
         
+        // Operating Expenses
         let expenseQueryConstraints: any[] = [orderBy("date", "asc")];
         if (reportStartDate) expenseQueryConstraints.push(where("date", ">=", reportStartDate));
         if (reportEndDate) expenseQueryConstraints.push(where("date", "<=", reportEndDate));
         const expenseSnap = await getDocs(query(collection(db, "expenses"), ...expenseQueryConstraints));
         expenseSnap.forEach(doc => totalOperatingExpenses += (doc.data() as Expense).totalAmount || 0);
 
+        // Professional Fees
         const profSnap = await getDocs(collection(db, "professionals"));
         profSnap.forEach(profDoc => {
             const prof = profDoc.data() as Professional;
@@ -140,6 +153,7 @@ export default function TaxSummaryPage() {
             }
         });
 
+        // Member TPINs
         const usersSnap = await getDocs(query(collection(db, "users"), orderBy("name", "asc")));
         usersSnap.forEach((userDoc) => {
             const user = userDoc.data() as UserProfile;
@@ -185,11 +199,7 @@ export default function TaxSummaryPage() {
                 { label: "Net Activity (Surplus/Deficit)", value: totalIncome - totalExpenditure },
             ],
              _customData: { 
-                type: 'financial_activity', // Keep type for ReportView if it uses it internally
-                incomeBreakdown: currentSummaryData.incomeBreakdown,
-                expenditureBreakdown: currentSummaryData.expenditureBreakdown,
                 memberTPINs: currentSummaryData.memberTPINs,
-                surplusDeficit: currentSummaryData.surplusDeficit,
             }
         });
       
@@ -253,13 +263,13 @@ export default function TaxSummaryPage() {
     <ProtectedRoute requiredAccessLevel={2}>
       <PageHeader
         title="Annual Financial Summary"
-        description="Generate an annual financial summary."
+        description="Generate an annual financial summary based on recorded income and expenditures."
       />
       <Card className="w-full">
         <CardHeader>
           <CardTitle>Generate Annual Summary</CardTitle>
           <CardDescription>
-            Select a financial year to generate the summary.
+            Select a financial year to generate the summary. This report will include all non-voided contributions, rental income, bank interest, operating expenses, professional fees paid, and bank charges for the selected year.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -314,7 +324,7 @@ export default function TaxSummaryPage() {
           ) : (
             <div className="text-center text-muted-foreground py-8">
                 <FileText className="mx-auto h-12 w-12 text-muted-foreground/50 mb-2" />
-                <p>Select a year and click "Generate Annual Summary" to view data.</p>
+                <p className="text-xs text-muted-foreground">Select a year and click "Generate Annual Summary" to view data.</p>
             </div>
           )}
         </CardContent>
@@ -322,3 +332,5 @@ export default function TaxSummaryPage() {
     </ProtectedRoute>
   );
 }
+
+    
