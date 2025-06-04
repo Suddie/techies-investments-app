@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { BellRing, CheckCheck, AlertTriangle, Filter, Trash2, Loader2 } from 'lucide-react';
+import { BellRing, CheckCheck, AlertTriangle, Filter, Trash2, Loader2, XCircle } from 'lucide-react'; // Added XCircle
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -10,7 +10,7 @@ import type { NotificationMessage } from '@/lib/types';
 import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '@/contexts/AuthProvider';
 import { useFirebase } from '@/contexts/FirebaseProvider';
-import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, writeBatch, Timestamp } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, writeBatch, Timestamp, getDocs } from 'firebase/firestore'; // Added getDocs
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -40,25 +40,16 @@ export default function AllNotificationsDisplay() {
     setError(null);
     const notificationsRef = collection(db, "notifications");
     
-    let qConstraints = [
+    // Simplified Firestore query: always fetch based on userId and order by timestamp.
+    // 'isRead' filtering will be done client-side.
+    const q = query(
+      notificationsRef,
       where("userId", "in", [userProfile.uid, "all"]),
       orderBy("timestamp", "desc")
-    ];
-
-    if (filter === "unread") {
-      qConstraints.push(where("isRead", "==", false));
-    } else if (filter === "read") {
-      qConstraints.push(where("isRead", "==", true));
-    }
-    // Note: Firestore requires a composite index for queries with multiple where clauses on different fields,
-    // especially if one is an inequality (like 'in') and another is an equality ('==') combined with orderBy.
-    // If `filter` is 'unread' or 'read', an index on [userId, isRead, timestamp desc] might be needed.
-    // For 'all' with `userId in [...]`, an index on [userId, timestamp desc] might be needed.
-
-    const q = query(notificationsRef, ...qConstraints);
+    );
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const fetchedNotifications: NotificationMessage[] = [];
+      let fetchedNotifications: NotificationMessage[] = [];
       querySnapshot.forEach((doc) => {
         const data = doc.data();
         const timestamp = data.timestamp instanceof Timestamp ? data.timestamp.toDate() : new Date(data.timestamp || Date.now());
@@ -68,17 +59,26 @@ export default function AllNotificationsDisplay() {
           timestamp,
         } as NotificationMessage);
       });
+
+      // Client-side filtering based on the 'filter' state
+      if (filter === "unread") {
+        fetchedNotifications = fetchedNotifications.filter(n => !n.isRead);
+      } else if (filter === "read") {
+        fetchedNotifications = fetchedNotifications.filter(n => n.isRead);
+      }
+
       setNotifications(fetchedNotifications);
       setLoading(false);
       setError(null);
     }, (err) => {
       console.error("Error fetching notifications:", err);
-      const errorMessage = `Could not fetch notifications. This might be due to missing Firestore indexes or permissions. Details: ${err.message}`;
+      const errorMessage = `Could not fetch notifications. This might be due to missing Firestore indexes or permissions. Details: ${err.message}. Please check your browser's developer console for a link to create the required Firestore index.`;
       setError(errorMessage);
       toast({
         title: "Notification Error",
-        description: "Failed to load notifications. Check console for details.",
+        description: "Failed to load notifications. Check console for details, including a link to create Firestore indexes if needed.",
         variant: "destructive",
+        duration: 10000,
       });
       setLoading(false);
       setNotifications([]);
@@ -105,7 +105,9 @@ export default function AllNotificationsDisplay() {
   const handleMarkAllAsRead = async () => {
     if (!userProfile || isProcessing) return;
 
-    const unreadNotificationsQuery = query(
+    // Query for unread notifications related to the user to mark them.
+    // This query is specific for the write operation.
+    const unreadQuery = query(
       collection(db, "notifications"),
       where("userId", "in", [userProfile.uid, "all"]),
       where("isRead", "==", false)
@@ -113,7 +115,7 @@ export default function AllNotificationsDisplay() {
     
     setIsProcessing(true);
     try {
-      const snapshot = await getDocs(unreadNotificationsQuery);
+      const snapshot = await getDocs(unreadQuery); // Use getDocs for a one-time fetch for the write operation
       if (snapshot.empty) {
         toast({ title: "No new notifications", description: "All notifications are already read." });
         setIsProcessing(false);
@@ -125,7 +127,7 @@ export default function AllNotificationsDisplay() {
         batch.update(docSnapshot.ref, { isRead: true });
       });
       await batch.commit();
-      toast({ title: "Success", description: "All unread notifications marked as read." });
+      toast({ title: "Success", description: "All visible unread notifications marked as read." });
     } catch (error: any) {
       console.error("Error marking all notifications as read:", error);
       toast({ title: "Error", description: `Failed to mark all as read: ${error.message}`, variant: "destructive" });
@@ -134,7 +136,15 @@ export default function AllNotificationsDisplay() {
     }
   };
 
-  const unreadCount = useMemo(() => notifications.filter(n => !n.isRead).length, [notifications]);
+  const unreadCount = useMemo(() => {
+    // When filter is 'all', unreadCount is based on all notifications.
+    // When filter is 'unread', unreadCount is just the length of the currently displayed (already filtered) list.
+    // When filter is 'read', unreadCount is 0 for the current view.
+    // To be accurate for the badge, we should always count unread from the *original potential dataset*.
+    // However, since client-side filtering is now active, the `notifications` array is already filtered.
+    // For simplicity, the unreadCount for the "Mark all as read" button will reflect unread items in the *current view*.
+    return notifications.filter(n => !n.isRead).length;
+  }, [notifications]);
 
   const getNotificationIcon = (type: NotificationMessage['type']) => {
     switch (type) {
@@ -142,7 +152,8 @@ export default function AllNotificationsDisplay() {
       case 'warning': return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
       case 'alert': return <AlertTriangle className="h-4 w-4 text-red-500" />;
       case 'success': return <CheckCheck className="h-4 w-4 text-green-500" />;
-      default: return <BellRing className="h-4 w-4 text-gray-500" />;
+      case 'error': return <XCircle className="h-4 w-4 text-red-700" />; // Added error icon
+      default: return <BellRing className="h-4 w-4 text-gray-500" />; // info
     }
   };
 
@@ -191,7 +202,7 @@ export default function AllNotificationsDisplay() {
                     <SelectItem value="read">Read Only</SelectItem>
                 </SelectContent>
             </Select>
-            {unreadCount > 0 && !error && (
+            {unreadCount > 0 && !error && ( // unreadCount refers to visible unread items
                 <Button variant="outline" size="sm" onClick={handleMarkAllAsRead} disabled={isProcessing || unreadCount === 0}>
                   {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCheck className="mr-2 h-4 w-4" />}
                   Mark all read
@@ -207,7 +218,7 @@ export default function AllNotificationsDisplay() {
               <AlertTriangle className="h-4 w-4" />
               <AlertTitle>Error Loading Notifications</AlertTitle>
               <AlertDescription>
-                {error} <br /> Please ensure Firestore indexes are correctly configured if this issue persists.
+                {error}
               </AlertDescription>
             </Alert>
           </div>
@@ -230,7 +241,11 @@ export default function AllNotificationsDisplay() {
                   className={`p-3 rounded-lg border flex items-start gap-3 transition-colors
                     ${notification.isRead ? 'bg-muted/40 hover:bg-muted/60' : 'bg-card hover:bg-accent/30 border-primary/30 shadow-sm'}`}
                 >
-                  <div className={`mt-1 p-1.5 rounded-full ${notification.isRead ? 'bg-muted' : 'bg-primary/10'}`}>
+                  <div className={`mt-1 p-1.5 rounded-full ${notification.isRead ? 'bg-muted' : 
+                    notification.type === 'error' ? 'bg-red-100 dark:bg-red-900/30' : 
+                    notification.type === 'warning' ? 'bg-yellow-100 dark:bg-yellow-900/30' : 
+                    'bg-primary/10' 
+                  }`}>
                     {getNotificationIcon(notification.type)}
                   </div>
                   <div className="flex-1">
@@ -263,7 +278,7 @@ export default function AllNotificationsDisplay() {
        {notifications.length > 0 && !error && (
         <CardFooter className="py-3 px-4 border-t">
             <p className="text-xs text-muted-foreground">
-                Displaying {notifications.length} notification(s) based on filter. {unreadCount} unread.
+                Displaying {notifications.length} notification(s) based on filter.
             </p>
         </CardFooter>
        )}
