@@ -25,21 +25,22 @@ import type {
   Professional,
   BankBalance,
   UserProfile,
-} from "@/lib/types";
+  ReportData, // Assuming ReportData is correctly imported or defined in types
+} from "@/lib/types"; // Ensure ReportData is here or correctly pathed
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertTriangle, Download, ImageIcon, Loader2, FileText } from "lucide-react";
 import { format, startOfYear, endOfYear, parse } from "date-fns";
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { useToast } from "@/hooks/use-toast";
-import ReportView, { type ReportData } from '@/components/reports/ReportView';
+import ReportView from '@/components/reports/ReportView'; // ReportData should be used by ReportView
 import { useAuth } from "@/contexts/AuthProvider";
 
 
 const generateYearOptions = () => {
   const currentYear = new Date().getFullYear();
   const years = [];
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 5; i++) { // Generate current year and 4 past years
     years.push(currentYear - i);
   }
   return years;
@@ -64,7 +65,6 @@ export default function TaxSummaryPage() {
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [summaryData, setSummaryData] = useState<TaxSummaryData | null>(null);
   const [generatedReportData, setGeneratedReportData] = useState<ReportData | null>(null);
   const { settings: globalSettings } = useSettings();
   const summaryViewRef = useRef<HTMLDivElement>(null);
@@ -80,7 +80,6 @@ export default function TaxSummaryPage() {
 
     setLoading(true);
     setError(null);
-    setSummaryData(null);
     setGeneratedReportData(null);
 
     const yearDate = new Date(parseInt(selectedYear, 10), 0, 1);
@@ -96,41 +95,39 @@ export default function TaxSummaryPage() {
 
         // Contributions
         const contributionsRef = collection(db, "contributions");
-        // Removed explicit orderBy("datePaid", "asc") from here
-        let contribQuery = query(contributionsRef, where("status", "!=", "voided"));
-        
+        let contribQuery = query(
+            contributionsRef,
+            where("status", "!=", "voided"), // Inequality filter
+            orderBy("datePaid", "asc")        // Order by the field used in range filters
+        );
+
         if (reportStartDate) {
             contribQuery = query(contribQuery, where("datePaid", ">=", reportStartDate));
         }
         if (reportEndDate) {
-            // Add orderBy before the second range filter if not already present and different field
-            // For same field, orderBy is not strictly needed before both range filters
-            contribQuery = query(contribQuery, where("datePaid", "<=", reportEndDate), orderBy("datePaid", "asc"));
-        } else {
-            // If only startDate, we might still want to order
-             contribQuery = query(contribQuery, orderBy("datePaid", "asc"));
+            contribQuery = query(contribQuery, where("datePaid", "<=", reportEndDate));
         }
-
+        // This query will require a composite index (status ASC, datePaid ASC)
         const contribSnap = await getDocs(contribQuery);
         contribSnap.forEach(doc => totalContributions += (doc.data() as Contribution).amount || 0);
 
 
         // Rental Income
-        let rentQueryConstraints: any[] = [where("status", "==", "Paid"), orderBy("invoiceDate", "asc")];
-        if (reportStartDate) rentQueryConstraints.push(where("invoiceDate", ">=", reportStartDate));
-        if (reportEndDate) rentQueryConstraints.push(where("invoiceDate", "<=", reportEndDate));
-        const rentSnap = await getDocs(query(collection(db, "rentInvoices"), ...rentQueryConstraints));
+        let rentQuery = query(collection(db, "rentInvoices"), where("status", "==", "Paid"), orderBy("invoiceDate", "asc"));
+        if (reportStartDate) rentQuery = query(rentQuery, where("invoiceDate", ">=", reportStartDate));
+        if (reportEndDate) rentQuery = query(rentQuery, where("invoiceDate", "<=", reportEndDate));
+        const rentSnap = await getDocs(rentQuery);
         rentSnap.forEach(doc => totalRentalIncome += (doc.data() as RentInvoice).rentAmount || 0);
 
         // Bank Interest & Charges
-        let bankQueryConstraints: any[] = [orderBy("monthYear", "asc")];
+        let bankQuery = query(collection(db, "bankBalances"), orderBy("monthYear", "asc"));
         const bankStartMonth = reportStartDate ? format(reportStartDate.toDate(), 'yyyy-MM') : null;
         const bankEndMonth = reportEndDate ? format(reportEndDate.toDate(), 'yyyy-MM') : null;
 
-        if (bankStartMonth) bankQueryConstraints.push(where("monthYear", ">=", bankStartMonth));
-        if (bankEndMonth) bankQueryConstraints.push(where("monthYear", "<=", bankEndMonth));
+        if (bankStartMonth) bankQuery = query(bankQuery, where("monthYear", ">=", bankStartMonth));
+        if (bankEndMonth) bankQuery = query(bankQuery, where("monthYear", "<=", bankEndMonth));
         
-        const bankSnap = await getDocs(query(collection(db, "bankBalances"), ...bankQueryConstraints));
+        const bankSnap = await getDocs(bankQuery);
         bankSnap.forEach(doc => {
             const data = doc.data() as BankBalance;
             totalBankInterest += data.interestEarned || 0;
@@ -138,10 +135,10 @@ export default function TaxSummaryPage() {
         });
         
         // Operating Expenses
-        let expenseQueryConstraints: any[] = [orderBy("date", "asc")];
-        if (reportStartDate) expenseQueryConstraints.push(where("date", ">=", reportStartDate));
-        if (reportEndDate) expenseQueryConstraints.push(where("date", "<=", reportEndDate));
-        const expenseSnap = await getDocs(query(collection(db, "expenses"), ...expenseQueryConstraints));
+        let expenseQuery = query(collection(db, "expenses"), orderBy("date", "asc"));
+        if (reportStartDate) expenseQuery = query(expenseQuery, where("date", ">=", reportStartDate));
+        if (reportEndDate) expenseQuery = query(expenseQuery, where("date", "<=", reportEndDate));
+        const expenseSnap = await getDocs(expenseQuery);
         expenseSnap.forEach(doc => totalOperatingExpenses += (doc.data() as Expense).totalAmount || 0);
 
         // Professional Fees
@@ -187,7 +184,7 @@ export default function TaxSummaryPage() {
             ].filter(item => item.amount !== 0),
             memberTPINs: memberTPINs,
         };
-        setSummaryData(currentSummaryData);
+        // setSummaryData(currentSummaryData); // Not used directly for display anymore
 
         setGeneratedReportData({
             title: `Annual Financial Summary - ${selectedYear}`,
@@ -211,9 +208,11 @@ export default function TaxSummaryPage() {
       toast({title: "Annual Summary Generated", description: `Summary for ${selectedYear} is ready.`});
     } catch (err: any) {
       console.error(`Error generating annual financial summary:`, err);
-      toast({ title: "Summary Generation Error", description: `Could not generate summary: ${err.message}. This may be due to missing Firestore indexes. Check the developer console for a link to create the index if provided by Firestore.`, variant: "destructive", duration: 10000 });
+      const errorMessage = `Could not generate summary: ${err.message}. This may be due to missing Firestore indexes. Check the developer console for a link to create the index if provided by Firestore. Required index likely involves 'status' and 'datePaid' on the 'contributions' collection.`;
+      setError(errorMessage);
+      toast({ title: "Summary Generation Error", description: errorMessage, variant: "destructive", duration: 15000 });
       setGeneratedReportData(null);
-      setSummaryData(null);
+      // setSummaryData(null); // Not used for display
     } finally {
       setLoading(false);
     }
@@ -329,7 +328,7 @@ export default function TaxSummaryPage() {
           ) : (
             <div className="text-center text-muted-foreground py-8">
                 <FileText className="mx-auto h-12 w-12 text-muted-foreground/50 mb-2" />
-                <p className="text-xs text-muted-foreground">Select a year and click "Generate Annual Summary" to view data.</p>
+                <p className="text-sm text-muted-foreground">Select a year and click "Generate Annual Summary" to view data.</p>
             </div>
           )}
         </CardContent>
@@ -337,5 +336,3 @@ export default function TaxSummaryPage() {
     </ProtectedRoute>
   );
 }
-
-    
