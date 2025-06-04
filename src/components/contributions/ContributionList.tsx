@@ -12,7 +12,7 @@ import { useFirebase } from '@/contexts/FirebaseProvider';
 import { collection, query, where, orderBy, onSnapshot, Timestamp } from 'firebase/firestore';
 import { format, parse, getDay, getDate, addMonths, startOfMonth, setDate } from 'date-fns'; // Added addMonths, startOfMonth, setDate
 import { Skeleton } from '@/components/ui/skeleton';
-import { AlertTriangle, CheckCircle, DollarSign } from 'lucide-react'; 
+import { AlertTriangle, CheckCircle, DollarSign, CircleSlash } from 'lucide-react'; // Added CircleSlash
 
 export default function ContributionList() {
   const { userProfile } = useAuth();
@@ -21,6 +21,8 @@ export default function ContributionList() {
   const [contributions, setContributions] = useState<Contribution[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 15;
 
   useEffect(() => {
     if (!userProfile) {
@@ -50,7 +52,8 @@ export default function ContributionList() {
             datePaid,
             createdAt,
             monthsCovered: Array.isArray(data.monthsCovered) ? data.monthsCovered.sort() : [], 
-            penaltyPaidAmount: data.penaltyPaidAmount || 0, // Ensure penaltyPaidAmount is always a number
+            penaltyPaidAmount: data.penaltyPaidAmount || 0,
+            status: data.status || 'active', // Ensure status is fetched
          } as Contribution);
       });
       setContributions(fetchedContributions);
@@ -66,6 +69,7 @@ export default function ContributionList() {
 
   // Client-side estimation for visual cue of lateness
   const isVisuallyLate = (contrib: Contribution): boolean => {
+    if (contrib.status === 'voided') return false; // Voided contributions are not late
     if (contrib.isLate === true) return true; // Honor existing flag
     if (contrib.isLate === false) return false; // Honor existing flag
 
@@ -73,17 +77,11 @@ export default function ContributionList() {
       return false; // Not enough info
     }
     try {
-      // Parse the first month covered (e.g., "2024-07")
       const firstMonthCoveredStr = contrib.monthsCovered[0];
       const firstMonthDate = parse(firstMonthCoveredStr + '-01', 'yyyy-MM-dd', new Date());
-      
-      // Determine the due date: 7th of the month *following* the firstMonthDate
       const monthFollowingFirstMonth = addMonths(startOfMonth(firstMonthDate), 1);
-      const dueDate = setDate(monthFollowingFirstMonth, 7); // 7th day of the next month
-
+      const dueDate = setDate(monthFollowingFirstMonth, 7); 
       const paymentDate = new Date(contrib.datePaid);
-      
-      // Payment is late if it's after the due date (considering only day precision for simplicity here)
       return paymentDate.getFullYear() > dueDate.getFullYear() ||
              (paymentDate.getFullYear() === dueDate.getFullYear() && paymentDate.getMonth() > dueDate.getMonth()) ||
              (paymentDate.getFullYear() === dueDate.getFullYear() && paymentDate.getMonth() === dueDate.getMonth() && paymentDate.getDate() > dueDate.getDate());
@@ -92,6 +90,22 @@ export default function ContributionList() {
       return false;
     }
   };
+
+  const getOverallStatusBadge = (contrib: Contribution) => {
+    if (contrib.status === 'voided') {
+      return <Badge variant="destructive" className="flex items-center w-fit"><CircleSlash className="mr-1 h-3.5 w-3.5" /> Voided</Badge>;
+    }
+    if (isVisuallyLate(contrib)) {
+      return <Badge variant="destructive" className="flex items-center w-fit"><AlertTriangle className="mr-1 h-3.5 w-3.5" /> Late</Badge>;
+    }
+    return <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-800/50 dark:text-green-300 border-green-300 dark:border-green-700 flex items-center w-fit"><CheckCircle className="mr-1 h-3.5 w-3.5" /> On Time</Badge>;
+  };
+
+  const paginatedContributions = contributions.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
+  const totalPages = Math.ceil(contributions.length / ITEMS_PER_PAGE);
 
 
   if (loading) {
@@ -171,13 +185,13 @@ export default function ContributionList() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {contributions.map((contrib) => {
-              const visuallyLate = isVisuallyLate(contrib);
+            {paginatedContributions.map((contrib) => {
+              const isVoided = contrib.status === 'voided';
               return (
-                <TableRow key={contrib.id}>
-                  <TableCell>{contrib.datePaid ? format(new Date(contrib.datePaid), "PP p") : 'Processing...'}</TableCell>
-                  <TableCell className="text-right font-medium">{contrib.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
-                  <TableCell className="text-right">
+                <TableRow key={contrib.id} className={isVoided ? "opacity-60" : ""}>
+                  <TableCell className={isVoided ? "line-through" : ""}>{contrib.datePaid ? format(new Date(contrib.datePaid), "PP p") : 'Processing...'}</TableCell>
+                  <TableCell className={`text-right font-medium ${isVoided ? "line-through" : ""}`}>{contrib.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                  <TableCell className={`text-right ${isVoided ? "line-through" : ""}`}>
                     {(contrib.penaltyPaidAmount || 0) > 0 ? (
                       <span className="text-orange-600 dark:text-orange-400">
                         {contrib.penaltyPaidAmount?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -186,19 +200,9 @@ export default function ContributionList() {
                       <span className="text-muted-foreground/70">-</span>
                     )}
                   </TableCell>
-                  <TableCell>{contrib.monthsCovered.map(m => format(parse(m + '-01', 'yyyy-MM-dd', new Date()), "MMM yyyy")).join(', ')}</TableCell>
-                  <TableCell>
-                    {visuallyLate ? (
-                      <Badge variant="destructive" className="flex items-center w-fit">
-                          <AlertTriangle className="mr-1 h-3.5 w-3.5" /> Late
-                      </Badge>
-                    ) : (
-                      <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-800/50 dark:text-green-300 border-green-300 dark:border-green-700 flex items-center w-fit">
-                          <CheckCircle className="mr-1 h-3.5 w-3.5" /> On Time
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell max-w-xs truncate" title={contrib.notes || undefined}>
+                  <TableCell className={isVoided ? "line-through" : ""}>{contrib.monthsCovered.map(m => format(parse(m + '-01', 'yyyy-MM-dd', new Date()), "MMM yyyy")).join(', ')}</TableCell>
+                  <TableCell>{getOverallStatusBadge(contrib)}</TableCell>
+                  <TableCell className={`hidden md:table-cell max-w-xs truncate ${isVoided ? "line-through" : ""}`} title={contrib.notes || undefined}>
                       {contrib.notes || <span className="text-muted-foreground/70">-</span>}
                   </TableCell>
                 </TableRow>
@@ -207,11 +211,31 @@ export default function ContributionList() {
           </TableBody>
         </Table>
       </CardContent>
-      {contributions.length > 5 && (
-        <CardFooter>
-            <p className="text-xs text-muted-foreground">Displaying latest {contributions.length} contributions.</p>
-        </CardFooter>
-      )}
+       {totalPages > 1 && (
+        <CardFooter className="flex items-center justify-between pt-4">
+            <p className="text-xs text-muted-foreground">
+              Page {currentPage} of {totalPages}
+            </p>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+              >
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages}
+              >
+                Next
+              </Button>
+            </div>
+          </CardFooter>
+        )}
     </Card>
   );
 }

@@ -113,11 +113,12 @@ export default function DashboardPage() {
     };
     fetchBankBalanceForMonth();
 
-    // Fetch Total Contributions (Selected Month)
+    // Fetch Total Contributions (Selected Month) - excluding voided
     const contribQuery = query(
       collection(db, "contributions"),
       where("datePaid", ">=", firstDayTimestamp),
-      where("datePaid", "<=", lastDayTimestamp)
+      where("datePaid", "<=", lastDayTimestamp),
+      where("status", "!=", "voided") // Exclude voided contributions
     );
     const unsubscribeContrib = onSnapshot(contribQuery, (snapshot) => {
       let sumVal = 0;
@@ -151,11 +152,12 @@ export default function DashboardPage() {
 
 
     // ----- Metrics not dependent on selectedMonthYear -----
-    // Fetch User's Total Contributions for Personal Summary
+    // Fetch User's Total Contributions for Personal Summary - excluding voided
     if (user && user.uid && loadingMetrics.userSummary) { // Only fetch if not already loaded or user changes
       const userContribQuery = query(
         collection(db, "contributions"),
-        where("userId", "==", user.uid)
+        where("userId", "==", user.uid),
+        where("status", "!=", "voided") // Exclude voided contributions
       );
       const unsubscribeUserContrib = onSnapshot(userContribQuery, (snapshot) => {
         let totalUserSum = 0;
@@ -283,7 +285,7 @@ export default function DashboardPage() {
           title="Monthly Contributions"
           value={!isMounted || loadingMetrics.contributionsMonth ? <Skeleton className="h-7 w-3/4" /> : `${settings.currencySymbol} ${(totalContributionsMonth ?? 0).toLocaleString()}`}
           icon={CircleDollarSign}
-          description={`Contributions for ${selectedMonthLabel}`}
+          description={`Active contributions for ${selectedMonthLabel}`}
         />
          <MetricCard
           title="Currently Overdue Members"
@@ -320,7 +322,7 @@ export default function DashboardPage() {
             title="Your Total Contributions"
             value={!isMounted || loadingMetrics.userSummary ? <Skeleton className="h-7 w-3/4" /> : `${settings.currencySymbol} ${(userTotalContributions ?? 0).toLocaleString()}`}
             icon={DollarSign}
-            description="All time contributions"
+            description="All time active contributions"
           />
           <MetricCard
             title="Your Shares"
