@@ -28,20 +28,17 @@ import type {
   Penalty,
 } from "@/lib/types";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertTriangle, Download, ImageIcon, Loader2, FileText } from "lucide-react";
-import { format, parse, startOfYear, endOfYear } from "date-fns";
+import { AlertTriangle, Download, ImageIcon, Loader2, FileText, CalendarIcon as CalendarLucideIcon } from "lucide-react"; // Renamed to avoid conflict
+import { format, parse, startOfYear, endOfYear, startOfDay, endOfDay } from "date-fns";
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { useToast } from "@/hooks/use-toast";
 import ReportView, { type ReportData } from '@/components/reports/ReportView';
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { CalendarIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { DateRange } from "react-day-picker";
 import { useAuth } from "@/contexts/AuthProvider";
-// FormDescription removed from here as it's not part of a form
-// import { FormDescription } from "@/components/ui/form";
 
 
 const generateYearOptions = () => {
@@ -73,7 +70,7 @@ interface StatementTransaction {
 
 type ReportType = 'member_statement' | 'financial_activity' | 'contribution_details' | 'penalty_details' | 'expense_details';
 
-const reportTypes: { value: ReportType; label: string }[] = [
+const reportTypesList: { value: ReportType; label: string }[] = [ // Renamed from reportTypes to avoid conflict
   { value: 'member_statement', label: 'Member Statement (My Data)' },
   { value: 'financial_activity', label: 'Financial Activity Summary' },
   { value: 'contribution_details', label: 'Contribution Details' },
@@ -114,8 +111,8 @@ export default function TaxSummaryPage() {
     setSummaryData(null);
     setGeneratedReportData(null); 
 
-    const reportStartDate = dateRange?.from ? startOfYear(dateRange.from) : (selectedYear ? Timestamp.fromDate(startOfYear(new Date(parseInt(selectedYear, 10), 0, 1))) : null);
-    const reportEndDate = dateRange?.to ? endOfYear(dateRange.to) : (selectedYear ? Timestamp.fromDate(endOfYear(new Date(parseInt(selectedYear, 10), 11, 31))) : null);
+    const reportStartDate = dateRange?.from ? startOfDay(dateRange.from) : (selectedYear ? Timestamp.fromDate(startOfYear(new Date(parseInt(selectedYear, 10), 0, 1))) : null);
+    const reportEndDate = dateRange?.to ? endOfDay(dateRange.to) : (selectedYear ? Timestamp.fromDate(endOfYear(new Date(parseInt(selectedYear, 10), 11, 31))) : null);
     const dateRangeString = reportStartDate ? `${format(reportStartDate instanceof Timestamp ? reportStartDate.toDate() : reportStartDate, "PPP")} - ${reportEndDate ? format(reportEndDate instanceof Timestamp ? reportEndDate.toDate() : reportEndDate, "PPP") : 'Present'}` : "All Time";
 
 
@@ -187,6 +184,7 @@ export default function TaxSummaryPage() {
 
 
       } else if (selectedReportType === 'financial_activity') {
+        const memberTPINs: { name: string; tpin: string }[] = []; // Declare memberTPINs here
         let totalContributions = 0, totalRentalIncome = 0, totalBankInterest = 0, totalOtherIncome = 0;
         let totalOperatingExpenses = 0, totalProfessionalFees = 0, totalBankCharges = 0;
 
@@ -248,7 +246,7 @@ export default function TaxSummaryPage() {
         const totalIncome = totalContributions + totalRentalIncome + totalBankInterest + totalOtherIncome;
         const totalExpenditure = totalOperatingExpenses + totalProfessionalFees + totalBankCharges;
 
-        const currentSummaryData = {
+        const currentSummaryData: TaxSummaryData = { // Ensure type here for consistency
             year: selectedYear || format(new Date(), 'yyyy'),
             totalIncome,
             totalExpenditure,
@@ -281,6 +279,57 @@ export default function TaxSummaryPage() {
                 { label: "Total Expenditure", value: totalExpenditure },
                 { label: "Net Activity (Surplus/Deficit)", value: totalIncome - totalExpenditure },
             ],
+             _customData: { 
+                type: 'financial_activity',
+                incomeBreakdown: currentSummaryData.incomeBreakdown,
+                expenditureBreakdown: currentSummaryData.expenditureBreakdown,
+                surplusDeficit: currentSummaryData.surplusDeficit,
+                memberTPINs: currentSummaryData.memberTPINs,
+            }
+        });
+      } else if (reportType === 'contribution_details') {
+        let contribQueryConstraints = [where("status", "!=", "voided"), orderBy("datePaid", "asc")];
+        if (reportStartDate) contribQueryConstraints.push(where("datePaid", ">=", reportStartDate));
+        if (reportEndDate) contribQueryConstraints.push(where("datePaid", "<=", reportEndDate));
+        
+        const contribSnap = await getDocs(query(collection(db, "contributions"), ...contribQueryConstraints));
+        const contributionsData: any[] = [];
+        let totalContribAmount = 0;
+        let totalPenaltyPaid = 0;
+
+        contribSnap.forEach(doc => {
+            const contrib = doc.data() as Contribution;
+            const datePaid = contrib.datePaid instanceof Timestamp ? contrib.datePaid.toDate() : new Date(contrib.datePaid);
+            contributionsData.push({
+                datePaid: format(datePaid, "yyyy-MM-dd HH:mm"),
+                memberName: contrib.memberName || "N/A",
+                amount: contrib.amount,
+                penaltyPaid: contrib.penaltyPaidAmount || 0,
+                monthsCovered: contrib.monthsCovered.map(m => format(parse(m + '-01', 'yyyy-MM-dd', new Date()), "MMM yyyy")).join(', '),
+                notes: contrib.notes || ""
+            });
+            totalContribAmount += contrib.amount || 0;
+            totalPenaltyPaid += contrib.penaltyPaidAmount || 0;
+        });
+
+        setGeneratedReportData({
+            title: "Contribution Details Report",
+            dateRange: dateRangeString,
+            currencySymbol: globalSettings.currencySymbol || "MK",
+            columns: [
+                { accessorKey: "datePaid", header: "Date Paid" },
+                { accessorKey: "memberName", header: "Member Name" },
+                { accessorKey: "amount", header: `Amount (${globalSettings.currencySymbol})` },
+                { accessorKey: "penaltyPaid", header: `Penalty Paid (${globalSettings.currencySymbol})` },
+                { accessorKey: "monthsCovered", header: "Months Covered" },
+                { accessorKey: "notes", header: "Notes" },
+            ],
+            data: contributionsData,
+            summary: [
+                { label: "Total Contributions", value: totalContribAmount },
+                { label: "Total Penalties Paid", value: totalPenaltyPaid },
+                { label: "Number of Contributions", value: contributionsData.length },
+            ],
         });
       }
       toast({title: "Report Generated", description: `Report for ${selectedReportType} covering ${dateRangeString} is ready.`});
@@ -288,6 +337,7 @@ export default function TaxSummaryPage() {
       console.error(`Error generating ${selectedReportType} report:`, err);
       toast({ title: "Report Generation Error", description: `Could not generate report: ${err.message}. This may be due to missing Firestore indexes.`, variant: "destructive", duration: 10000 });
       setGeneratedReportData(null);
+      setSummaryData(null);
     } finally {
       setLoading(false);
     }
@@ -365,7 +415,7 @@ export default function TaxSummaryPage() {
                <Select onValueChange={(value) => setSelectedReportType(value as ReportType)} value={selectedReportType}>
                 <SelectTrigger id="report-type-selector"> <SelectValue placeholder="Select report type" /> </SelectTrigger>
                 <SelectContent>
-                  {reportTypes.map((rt) => ( <SelectItem key={rt.value} value={rt.value}>{rt.label}</SelectItem> ))}
+                  {reportTypesList.map((rt) => ( <SelectItem key={rt.value} value={rt.value}>{rt.label}</SelectItem> ))}
                 </SelectContent>
               </Select>
             </div>
@@ -395,7 +445,7 @@ export default function TaxSummaryPage() {
                       className={cn("w-full justify-start text-left font-normal", !dateRange && "text-muted-foreground")}
                       disabled={!!selectedYear && selectedReportType !== 'member_statement'}
                     >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      <CalendarLucideIcon className="mr-2 h-4 w-4" />
                       {dateRange?.from ? (dateRange.to ? (<> {format(dateRange.from, "LLL dd, y")} - {format(dateRange.to, "LLL dd, y")} </>) : (format(dateRange.from, "LLL dd, y"))) : (<span>Pick a date range</span>)}
                     </Button>
                   </PopoverTrigger>
@@ -426,7 +476,7 @@ export default function TaxSummaryPage() {
                  {selectedReportType === 'financial_activity' && summaryData ? (
                      <ReportView reportData={{
                         title: `Financial Summary for ${summaryData.year}`,
-                        dateRange: dateRangeString, // Use the calculated dateRangeString
+                        dateRange: dateRangeString, 
                         currencySymbol: globalSettings.currencySymbol || "MK",
                         columns: [], 
                         data: [], 
@@ -435,13 +485,14 @@ export default function TaxSummaryPage() {
                             { label: "Total Expenditure", value: summaryData.totalExpenditure },
                             { label: "Net Surplus / Deficit", value: summaryData.surplusDeficit }
                         ],
-                        _customData: { // For custom rendering logic specific to financial_activity
+                        _customData: { 
+                            type: 'financial_activity',
                             incomeBreakdown: summaryData.incomeBreakdown,
                             expenditureBreakdown: summaryData.expenditureBreakdown,
                             memberTPINs: summaryData.memberTPINs,
                             surplusDeficit: summaryData.surplusDeficit,
                         }
-                    } as any} />
+                    }} />
                  ) : generatedReportData ? (
                     <ReportView reportData={generatedReportData} />
                  ) : <p>Report data is being prepared...</p>}
