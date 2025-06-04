@@ -39,6 +39,7 @@ export interface Contribution {
   datePaid: any; // Can be Date or Firestore Timestamp
   isLate?: boolean; 
   notes?: string;
+  status?: 'active' | 'voided'; // New status field
   createdAt?: any; // Firestore Timestamp
   updatedAt?: any; // Firestore Timestamp for edits
 }

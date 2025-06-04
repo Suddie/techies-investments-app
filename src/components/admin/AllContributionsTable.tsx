@@ -11,14 +11,14 @@ import { useFirebase } from '@/contexts/FirebaseProvider';
 import { collection, query, orderBy, onSnapshot, Timestamp, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { format, parse, addMonths, startOfMonth, setDate, getYear, getMonth, subMonths } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
-import { AlertTriangle, CheckCircle, ClipboardList, Search, XCircle, Edit2, MoreHorizontal } from 'lucide-react'; // Added Edit2, MoreHorizontal
+import { AlertTriangle, CheckCircle, ClipboardList, Search, XCircle, Edit2, MoreHorizontal, CircleSlash } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog"; // Added Dialog
-import ContributionForm from '@/components/contributions/ContributionForm'; // Added ContributionForm import
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Dialog, DialogContent, DialogTrigger, AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent as AlertContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger as AlertTrigger } from "@/components/ui/dialog";
+import ContributionForm from '@/components/contributions/ContributionForm';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 
 const generateMonthFilterOptions = () => {
@@ -52,10 +52,12 @@ export default function AllContributionsTable() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedMemberFilter, setSelectedMemberFilter] = useState<string>("all");
   const [selectedMonthFilter, setSelectedMonthFilter] = useState<string>("all");
-  const [selectedStatusFilter, setSelectedStatusFilter] = useState<"all" | "on-time" | "late">("all");
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState<"all" | "on-time" | "late" | "voided">("all");
 
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [contributionToEdit, setContributionToEdit] = useState<Contribution | null>(null);
+  const [contributionToVoid, setContributionToVoid] = useState<Contribution | null>(null);
+  const [isVoidConfirmOpen, setIsVoidConfirmOpen] = useState(false);
 
   const monthFilterOptions = useMemo(() => generateMonthFilterOptions(), []);
   const memberFilterOptions = useMemo(() => {
@@ -79,7 +81,6 @@ export default function AllContributionsTable() {
       const fetchedContributions: Contribution[] = [];
       querySnapshot.forEach((doc) => {
         const data = doc.data();
-        // Ensure datePaid is a Date object
         const datePaid = data.datePaid instanceof Timestamp ? data.datePaid.toDate() : (data.datePaid ? new Date(data.datePaid) : new Date());
         const createdAt = data.createdAt instanceof Timestamp ? data.createdAt.toDate() : (data.createdAt ? new Date(data.createdAt) : new Date());
         const updatedAt = data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : (data.updatedAt ? new Date(data.updatedAt) : undefined);
@@ -92,6 +93,7 @@ export default function AllContributionsTable() {
             updatedAt,
             monthsCovered: Array.isArray(data.monthsCovered) ? data.monthsCovered.sort() : [], 
             penaltyPaidAmount: data.penaltyPaidAmount || 0,
+            status: data.status || 'active',
          } as Contribution);
       });
       setAllContributions(fetchedContributions);
@@ -111,6 +113,7 @@ export default function AllContributionsTable() {
   }, [db, toast]);
 
   const isVisuallyLate = (contrib: Contribution): boolean => {
+    if (contrib.status === 'voided') return false; // Voided contributions are not considered late for this visual cue
     if (contrib.isLate === true) return true;
     if (contrib.isLate === false) return false;
     if (!contrib.datePaid || !contrib.monthsCovered || contrib.monthsCovered.length === 0) return false;
@@ -138,8 +141,12 @@ export default function AllContributionsTable() {
       filtered = filtered.filter(c => c.monthsCovered.includes(selectedMonthFilter));
     }
     if (selectedStatusFilter !== "all") {
-      const isLateFilter = selectedStatusFilter === 'late';
-      filtered = filtered.filter(c => isVisuallyLate(c) === isLateFilter);
+      if (selectedStatusFilter === 'voided') {
+        filtered = filtered.filter(c => c.status === 'voided');
+      } else {
+        const isLateFilter = selectedStatusFilter === 'late';
+        filtered = filtered.filter(c => c.status !== 'voided' && isVisuallyLate(c) === isLateFilter);
+      }
     }
     setDisplayedContributions(filtered);
   }, [allContributions, searchTerm, selectedMemberFilter, selectedMonthFilter, selectedStatusFilter]);
@@ -152,6 +159,10 @@ export default function AllContributionsTable() {
   };
 
   const handleEditContribution = (contribution: Contribution) => {
+    if (contribution.status === 'voided') {
+      toast({ title: "Action Denied", description: "Cannot edit a voided contribution.", variant: "destructive" });
+      return;
+    }
     setContributionToEdit(contribution);
     setIsEditDialogOpen(true);
   };
@@ -159,7 +170,6 @@ export default function AllContributionsTable() {
   const handleSaveEditedContribution = async (data: ContributionFormValues, contributionId: string) => {
     try {
       const contribDocRef = doc(db, "contributions", contributionId);
-      // Ensure datePaid is converted to Firestore Timestamp for update
       const datePaidTimestamp = data.datePaid ? Timestamp.fromDate(data.datePaid) : serverTimestamp();
       
       const updateData: Partial<Contribution> = {
@@ -167,9 +177,9 @@ export default function AllContributionsTable() {
         monthsCovered: data.monthsCovered.sort(),
         penaltyPaidAmount: data.penaltyPaidAmount || 0,
         notes: data.notes || "",
-        datePaid: datePaidTimestamp, // Use the converted Timestamp
+        datePaid: datePaidTimestamp,
         updatedAt: serverTimestamp(),
-        // isLate could be re-evaluated here if needed
+        status: 'active', // Ensure editing makes it active if it was somehow not.
       };
 
       await updateDoc(contribDocRef, updateData);
@@ -180,6 +190,42 @@ export default function AllContributionsTable() {
       console.error("Error updating contribution:", error);
       toast({ title: "Update Failed", description: error.message, variant: "destructive" });
     }
+  };
+
+  const handleVoidContribution = (contribution: Contribution) => {
+    if (contribution.status === 'voided') {
+      toast({ title: "Already Voided", description: "This contribution is already voided.", variant: "default" });
+      return;
+    }
+    setContributionToVoid(contribution);
+    setIsVoidConfirmOpen(true);
+  };
+
+  const confirmVoidContribution = async () => {
+    if (!contributionToVoid) return;
+    try {
+      const contribDocRef = doc(db, "contributions", contributionToVoid.id!);
+      await updateDoc(contribDocRef, {
+        status: 'voided',
+        updatedAt: serverTimestamp(),
+      });
+      toast({ title: "Contribution Voided", description: `Contribution from ${contributionToVoid.memberName} has been voided.` });
+      setIsVoidConfirmOpen(false);
+      setContributionToVoid(null);
+    } catch (error: any) {
+      console.error("Error voiding contribution:", error);
+      toast({ title: "Voiding Failed", description: error.message, variant: "destructive" });
+    }
+  };
+
+  const getOverallStatusBadge = (contrib: Contribution) => {
+    if (contrib.status === 'voided') {
+      return <Badge variant="destructive" className="flex items-center w-fit"><CircleSlash className="mr-1 h-3.5 w-3.5" /> Voided</Badge>;
+    }
+    if (isVisuallyLate(contrib)) {
+      return <Badge variant="destructive" className="flex items-center w-fit"><AlertTriangle className="mr-1 h-3.5 w-3.5" /> Late</Badge>;
+    }
+    return <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-800/50 dark:text-green-300 border-green-300 dark:border-green-700 flex items-center w-fit"><CheckCircle className="mr-1 h-3.5 w-3.5" /> On Time</Badge>;
   };
 
 
@@ -211,7 +257,7 @@ export default function AllContributionsTable() {
     <Card className="w-full shadow-lg">
       <CardHeader>
         <CardTitle>All Member Contributions</CardTitle>
-        <CardDescription>A comprehensive record of all contributions received. Use filters to narrow down results. Edit actions available for Admins.</CardDescription>
+        <CardDescription>A comprehensive record of all contributions received. Use filters to narrow down results. Edit/Void actions available for Admins.</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="mb-6 p-4 border rounded-lg bg-muted/30">
@@ -248,12 +294,13 @@ export default function AllContributionsTable() {
             </div>
             <div className="space-y-1.5">
                 <label htmlFor="filter-status" className="text-sm font-medium">Filter by Status</label>
-                <Select value={selectedStatusFilter} onValueChange={(v) => setSelectedStatusFilter(v as "all" | "on-time" | "late")}>
+                <Select value={selectedStatusFilter} onValueChange={(v) => setSelectedStatusFilter(v as "all" | "on-time" | "late" | "voided")}>
                     <SelectTrigger id="filter-status"><SelectValue placeholder="All Statuses" /></SelectTrigger>
                     <SelectContent>
                         <SelectItem value="all">All Statuses</SelectItem>
                         <SelectItem value="on-time">On Time</SelectItem>
                         <SelectItem value="late">Late</SelectItem>
+                        <SelectItem value="voided">Voided</SelectItem>
                     </SelectContent>
                 </Select>
             </div>
@@ -277,20 +324,20 @@ export default function AllContributionsTable() {
                 <TableHead className="text-right">Amount ({settings.currencySymbol})</TableHead>
                 <TableHead className="text-right">Penalty Paid ({settings.currencySymbol})</TableHead>
                 <TableHead>Months Covered</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead>Overall Status</TableHead>
                 <TableHead className="hidden md:table-cell">Notes</TableHead>
                 <TableHead>Actions</TableHead>
                 </TableRow>
             </TableHeader>
             <TableBody>
                 {displayedContributions.map((contrib) => {
-                const visuallyLate = isVisuallyLate(contrib);
+                const isVoided = contrib.status === 'voided';
                 return (
-                    <TableRow key={contrib.id}>
-                    <TableCell>{contrib.datePaid ? format(new Date(contrib.datePaid), "PP p") : 'Processing...'}</TableCell>
-                    <TableCell className="font-medium">{contrib.memberName || <span className="text-muted-foreground/70">N/A</span>}</TableCell>
-                    <TableCell className="text-right">{contrib.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
-                    <TableCell className="text-right">
+                    <TableRow key={contrib.id} className={isVoided ? "opacity-60" : ""}>
+                    <TableCell className={isVoided ? "line-through" : ""}>{contrib.datePaid ? format(new Date(contrib.datePaid), "PP p") : 'Processing...'}</TableCell>
+                    <TableCell className={`font-medium ${isVoided ? "line-through" : ""}`}>{contrib.memberName || <span className="text-muted-foreground/70">N/A</span>}</TableCell>
+                    <TableCell className={`text-right ${isVoided ? "line-through" : ""}`}>{contrib.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                    <TableCell className={`text-right ${isVoided ? "line-through" : ""}`}>
                         {(contrib.penaltyPaidAmount || 0) > 0 ? (
                         <span className="text-orange-600 dark:text-orange-400">
                             {contrib.penaltyPaidAmount?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -299,19 +346,9 @@ export default function AllContributionsTable() {
                         <span className="text-muted-foreground/70">-</span>
                         )}
                     </TableCell>
-                    <TableCell>{contrib.monthsCovered.map(m => format(parse(m + '-01', 'yyyy-MM-dd', new Date()), "MMM yy")).join(', ')}</TableCell>
-                    <TableCell>
-                        {visuallyLate ? (
-                        <Badge variant="destructive" className="flex items-center w-fit">
-                            <AlertTriangle className="mr-1 h-3.5 w-3.5" /> Late
-                        </Badge>
-                        ) : (
-                        <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-800/50 dark:text-green-300 border-green-300 dark:border-green-700 flex items-center w-fit">
-                            <CheckCircle className="mr-1 h-3.5 w-3.5" /> On Time
-                        </Badge>
-                        )}
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell max-w-xs truncate" title={contrib.notes || undefined}>
+                    <TableCell className={isVoided ? "line-through" : ""}>{contrib.monthsCovered.map(m => format(parse(m + '-01', 'yyyy-MM-dd', new Date()), "MMM yy")).join(', ')}</TableCell>
+                    <TableCell>{getOverallStatusBadge(contrib)}</TableCell>
+                    <TableCell className={`hidden md:table-cell max-w-xs truncate ${isVoided ? "line-through" : ""}`} title={contrib.notes || undefined}>
                         {contrib.notes || <span className="text-muted-foreground/70">-</span>}
                     </TableCell>
                     <TableCell>
@@ -324,10 +361,12 @@ export default function AllContributionsTable() {
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                                 <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                                <DropdownMenuItem onClick={() => handleEditContribution(contrib)}>
+                                <DropdownMenuItem onClick={() => handleEditContribution(contrib)} disabled={isVoided}>
                                     <Edit2 className="mr-2 h-4 w-4" /> Edit
                                 </DropdownMenuItem>
-                                {/* Void action can be added later */}
+                                <DropdownMenuItem onClick={() => handleVoidContribution(contrib)} disabled={isVoided} className={!isVoided ? "text-destructive focus:text-destructive focus:bg-destructive/10" : ""}>
+                                    <CircleSlash className="mr-2 h-4 w-4" /> Void
+                                </DropdownMenuItem>
                             </DropdownMenuContent>
                         </DropdownMenu>
                     </TableCell>
@@ -345,7 +384,6 @@ export default function AllContributionsTable() {
       )}
     </Card>
 
-    {/* Edit Contribution Dialog */}
     <Dialog open={isEditDialogOpen} onOpenChange={(isOpen) => {
         setIsEditDialogOpen(isOpen);
         if (!isOpen) setContributionToEdit(null);
@@ -364,6 +402,22 @@ export default function AllContributionsTable() {
             )}
         </DialogContent>
     </Dialog>
+
+    <AlertDialog open={isVoidConfirmOpen} onOpenChange={setIsVoidConfirmOpen}>
+        <AlertContent>
+            <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure you want to void this contribution?</AlertDialogTitle>
+            <AlertDialogDescription>
+                This action will mark the contribution by "{contributionToVoid?.memberName}" for period(s) {contributionToVoid?.monthsCovered.join(', ')} as voided. 
+                This cannot be undone easily.
+            </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setContributionToVoid(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmVoidContribution} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Void Contribution</AlertDialogAction>
+            </AlertDialogFooter>
+        </AlertContent>
+    </AlertDialog>
     </>
   );
 }
