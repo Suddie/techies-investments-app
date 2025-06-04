@@ -175,8 +175,6 @@ export default function TaxSummaryPage() {
           statementItems.push({ date: format(transaction.date, "yyyy-MM-dd"), description: transaction.description, debit: transaction.debit, credit: transaction.credit, balance: runningBalance });
         }
         
-        // This TaxSummaryData is more for the 'financial_activity' type.
-        // For 'member_statement', we directly set generatedReportData.
         setGeneratedReportData({
           title: `Member Statement - ${userProfile.name || 'Current User'}`,
           dateRange: dateRangeString,
