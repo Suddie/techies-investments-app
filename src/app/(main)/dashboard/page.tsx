@@ -19,7 +19,7 @@ import type { UserProfile, Milestone } from "@/lib/types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { format, parse, subMonths, addMonths, startOfMonth, endOfMonth } from 'date-fns';
-import { useToast } from "@/hooks/use-toast"; // Added useToast
+import { useToast } from "@/hooks/use-toast";
 
 // Helper function to generate month options
 const generateMonthOptions = () => {
@@ -46,7 +46,7 @@ export default function DashboardPage() {
   const { user, userProfile } = useAuth();
   const { settings } = useSettings();
   const { db } = useFirebase();
-  const { toast } = useToast(); // Initialize useToast
+  const { toast } = useToast();
   const shareValue = 1;
   const [isMounted, setIsMounted] = useState(false);
 
@@ -85,7 +85,7 @@ export default function DashboardPage() {
         ...prev, 
         bankBalance: true,
         expenditures: true,
-        contributionsMonth: true, // Set contributionsMonth loading to true at the start of this effect block
+        contributionsMonth: true,
     }));
 
     const parsedSelectedDate = parse(selectedMonthYear, 'yyyy-MM', new Date());
@@ -104,7 +104,7 @@ export default function DashboardPage() {
           const balanceDoc = querySnapshot.docs[0];
           setBankBalanceForMonth(balanceDoc.data().closingBalance);
         } else {
-          setBankBalanceForMonth(0); // No record for this month, assume 0
+          setBankBalanceForMonth(0); 
         }
       } catch (error) {
         console.error("Error fetching bank balance for month:", error);
@@ -115,10 +115,12 @@ export default function DashboardPage() {
     };
     fetchBankBalanceForMonth();
 
-    // Fetch Total Contributions FOR Selected Month (based on monthsCovered)
+    // Fetch Total Contributions PAID IN Selected Month
     const contribForMonthQuery = query(
       collection(db, "contributions"),
-      where("monthsCovered", "array-contains", selectedMonthYear)
+      where("datePaid", ">=", firstDayTimestamp),
+      where("datePaid", "<=", lastDayTimestamp)
+      // orderBy("datePaid", "asc") // Optional: Firestore usually handles this for range queries
     );
     const unsubscribeContribForMonth = onSnapshot(contribForMonthQuery, (snapshot) => {
       let sumVal = 0;
@@ -131,10 +133,10 @@ export default function DashboardPage() {
       setTotalContributionsMonth(sumVal);
       setLoadingMetrics(prev => ({ ...prev, contributionsMonth: false }));
     }, (error) => {
-        console.error(`Error fetching contributions for month ${selectedMonthYear}:`, error);
+        console.error(`Error fetching contributions paid in month ${selectedMonthYear}:`, error);
         toast({
           title: "Error Fetching Monthly Contributions",
-          description: `Could not load contributions for ${selectedMonthYear}: ${error.message}. This may require a Firestore index on the 'monthsCovered' field. Check your Firestore console for index suggestions.`,
+          description: `Could not load contributions paid in ${selectedMonthYear}: ${error.message}. This may require a Firestore index on the 'datePaid' field. Check your Firestore console for index suggestions.`,
           variant: "destructive",
           duration: 10000,
         });
@@ -248,7 +250,7 @@ export default function DashboardPage() {
     return () => {
       unsubscribes.forEach(unsub => unsub());
     };
-  }, [isMounted, db, user, settings.currencySymbol, selectedMonthYear, toast]); // Added toast to dependencies
+  }, [isMounted, db, user, settings.currencySymbol, selectedMonthYear, toast]);
 
 
   const selectedMonthLabel = useMemo(() => {
@@ -299,7 +301,7 @@ export default function DashboardPage() {
           title="Monthly Contributions"
           value={!isMounted || loadingMetrics.contributionsMonth ? <Skeleton className="h-7 w-3/4" /> : `${settings.currencySymbol} ${(totalContributionsMonth ?? 0).toLocaleString()}`}
           icon={CircleDollarSign}
-          description={`Contributions recorded for ${selectedMonthLabel}`}
+          description={`Contributions paid in ${selectedMonthLabel}`}
         />
          <MetricCard
           title="Currently Overdue Members"
@@ -401,3 +403,5 @@ export default function DashboardPage() {
 }
 
       
+
+    
