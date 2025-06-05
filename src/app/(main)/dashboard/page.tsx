@@ -85,7 +85,7 @@ export default function DashboardPage() {
         ...prev, 
         bankBalance: true,
         expenditures: true,
-        contributionsMonth: true,
+        contributionsMonth: true, // Ensure this is reset for the new month
     }));
 
     const parsedSelectedDate = parse(selectedMonthYear, 'yyyy-MM', new Date());
@@ -115,12 +115,10 @@ export default function DashboardPage() {
     };
     fetchBankBalanceForMonth();
 
-    // Fetch Total Contributions PAID IN Selected Month
+    // Fetch Total Contributions DESIGNATED FOR Selected Month
     const contribForMonthQuery = query(
       collection(db, "contributions"),
-      where("datePaid", ">=", firstDayTimestamp),
-      where("datePaid", "<=", lastDayTimestamp)
-      // orderBy("datePaid", "asc") // Optional: Firestore usually handles this for range queries
+      where("monthsCovered", "array-contains", selectedMonthYear)
     );
     const unsubscribeContribForMonth = onSnapshot(contribForMonthQuery, (snapshot) => {
       let sumVal = 0;
@@ -133,10 +131,10 @@ export default function DashboardPage() {
       setTotalContributionsMonth(sumVal);
       setLoadingMetrics(prev => ({ ...prev, contributionsMonth: false }));
     }, (error) => {
-        console.error(`Error fetching contributions paid in month ${selectedMonthYear}:`, error);
+        console.error(`Error fetching contributions for month ${selectedMonthYear}:`, error);
         toast({
           title: "Error Fetching Monthly Contributions",
-          description: `Could not load contributions paid in ${selectedMonthYear}: ${error.message}. This may require a Firestore index on the 'datePaid' field. Check your Firestore console for index suggestions.`,
+          description: `Could not load contributions for ${selectedMonthYear}: ${error.message}. This may require a Firestore index on 'monthsCovered'. Check your Firestore console for index suggestions.`,
           variant: "destructive",
           duration: 10000,
         });
@@ -301,7 +299,7 @@ export default function DashboardPage() {
           title="Monthly Contributions"
           value={!isMounted || loadingMetrics.contributionsMonth ? <Skeleton className="h-7 w-3/4" /> : `${settings.currencySymbol} ${(totalContributionsMonth ?? 0).toLocaleString()}`}
           icon={CircleDollarSign}
-          description={`Contributions paid in ${selectedMonthLabel}`}
+          description={`Active contributions for ${selectedMonthLabel}`}
         />
          <MetricCard
           title="Currently Overdue Members"
@@ -402,5 +400,7 @@ export default function DashboardPage() {
   );
 }
 
+
+    
 
     
