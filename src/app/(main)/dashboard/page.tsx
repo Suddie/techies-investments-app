@@ -118,13 +118,13 @@ export default function DashboardPage() {
       collection(db, "contributions"),
       where("datePaid", ">=", firstDayTimestamp),
       where("datePaid", "<=", lastDayTimestamp),
-      orderBy("datePaid") // Good practice for range queries
+      orderBy("datePaid") 
     );
     const unsubscribeContrib = onSnapshot(contribQuery, (snapshot) => {
       let sumVal = 0;
       snapshot.forEach(doc => {
         const data = doc.data();
-        if (data.status !== 'voided') { // Client-side filter for voided status
+        if (data.status !== 'voided') { 
           sumVal += data.amount;
         }
       });
@@ -140,7 +140,7 @@ export default function DashboardPage() {
     // Fetch Total Expenditures (Selected Month)
     const expensesQuery = query(
       collection(db, "expenses"),
-      where("date", ">=", firstDayTimestamp), // Assuming 'date' field in expenses
+      where("date", ">=", firstDayTimestamp), 
       where("date", "<=", lastDayTimestamp)
     );
     const unsubscribeExpenses = onSnapshot(expensesQuery, (snapshot) => {
@@ -157,17 +157,20 @@ export default function DashboardPage() {
 
 
     // ----- Metrics not dependent on selectedMonthYear -----
-    // Fetch User's Total Contributions for Personal Summary - excluding voided
-    if (user && user.uid && loadingMetrics.userSummary) { // Only fetch if not already loaded or user changes
+    // Fetch User's Total Contributions for Personal Summary - client-side filtering for voided
+    if (user && user.uid && loadingMetrics.userSummary) { 
       const userContribQuery = query(
         collection(db, "contributions"),
-        where("userId", "==", user.uid),
-        where("status", "!=", "voided") // Exclude voided contributions
+        where("userId", "==", user.uid)
+        // orderBy("datePaid", "desc") // Optional: Consider if ordering is beneficial for performance or debugging
       );
       const unsubscribeUserContrib = onSnapshot(userContribQuery, (snapshot) => {
         let totalUserSum = 0;
         snapshot.forEach(doc => {
-          totalUserSum += (doc.data().amount || 0);
+          const data = doc.data();
+          if (data.status !== 'voided') { // Client-side filter
+            totalUserSum += (data.amount || 0);
+          }
         });
         setUserTotalContributions(totalUserSum);
         setUserTotalShares(shareValue > 0 ? totalUserSum / shareValue : 0);
@@ -179,14 +182,14 @@ export default function DashboardPage() {
         setLoadingMetrics(prev => ({ ...prev, userSummary: false }));
       });
       unsubscribes.push(unsubscribeUserContrib);
-    } else if (!user && !loadingMetrics.userSummary) { // User logged out, reset
+    } else if (!user && !loadingMetrics.userSummary) { 
         setUserTotalContributions(0);
         setUserTotalShares(0);
     }
 
 
     // Fetch Overdue Members (Active users with penaltyBalance > 0) - Real-time
-    if (loadingMetrics.overdueMembers) { // Only fetch if not already loaded
+    if (loadingMetrics.overdueMembers) { 
         const overdueMembersQuery = query(
             collection(db, "users"),
             where("status", "==", "Active"),
@@ -209,7 +212,7 @@ export default function DashboardPage() {
     }
 
     // Fetch Milestones for Project Completion Chart - Real-time
-    if (loadingMetrics.projectCompletion) { // Only fetch if not already loaded
+    if (loadingMetrics.projectCompletion) { 
         const milestonesQuery = query(collection(db, "milestones"));
         const unsubscribeMilestones = onSnapshot(milestonesQuery, (snapshot) => {
             let completedCount = 0;
