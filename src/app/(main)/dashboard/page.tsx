@@ -113,16 +113,21 @@ export default function DashboardPage() {
     };
     fetchBankBalanceForMonth();
 
-    // Fetch Total Contributions (Selected Month) - excluding voided
+    // Fetch Total Contributions (Selected Month) - client-side filtering for voided
     const contribQuery = query(
       collection(db, "contributions"),
       where("datePaid", ">=", firstDayTimestamp),
       where("datePaid", "<=", lastDayTimestamp),
-      where("status", "!=", "voided") // Exclude voided contributions
+      orderBy("datePaid") // Good practice for range queries
     );
     const unsubscribeContrib = onSnapshot(contribQuery, (snapshot) => {
       let sumVal = 0;
-      snapshot.forEach(doc => sumVal += doc.data().amount);
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.status !== 'voided') { // Client-side filter for voided status
+          sumVal += data.amount;
+        }
+      });
       setTotalContributionsMonth(sumVal);
       setLoadingMetrics(prev => ({ ...prev, contributionsMonth: false }));
     }, (error) => {
