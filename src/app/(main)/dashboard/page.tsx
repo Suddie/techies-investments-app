@@ -19,6 +19,7 @@ import type { UserProfile, Milestone } from "@/lib/types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { format, parse, subMonths, addMonths, startOfMonth, endOfMonth } from 'date-fns';
+import { useToast } from "@/hooks/use-toast"; // Added useToast
 
 // Helper function to generate month options
 const generateMonthOptions = () => {
@@ -45,6 +46,7 @@ export default function DashboardPage() {
   const { user, userProfile } = useAuth();
   const { settings } = useSettings();
   const { db } = useFirebase();
+  const { toast } = useToast(); // Initialize useToast
   const shareValue = 1;
   const [isMounted, setIsMounted] = useState(false);
 
@@ -83,7 +85,7 @@ export default function DashboardPage() {
         ...prev, 
         bankBalance: true,
         expenditures: true,
-        contributionsMonth: true,
+        contributionsMonth: true, // Set contributionsMonth loading to true at the start of this effect block
     }));
 
     const parsedSelectedDate = parse(selectedMonthYear, 'yyyy-MM', new Date());
@@ -113,31 +115,36 @@ export default function DashboardPage() {
     };
     fetchBankBalanceForMonth();
 
-    // Fetch Total Contributions (Selected Month) - client-side filtering for voided
-    const contribQuery = query(
+    // Fetch Total Contributions FOR Selected Month (based on monthsCovered)
+    const contribForMonthQuery = query(
       collection(db, "contributions"),
-      where("datePaid", ">=", firstDayTimestamp),
-      where("datePaid", "<=", lastDayTimestamp),
-      orderBy("datePaid") 
+      where("monthsCovered", "array-contains", selectedMonthYear)
     );
-    const unsubscribeContrib = onSnapshot(contribQuery, (snapshot) => {
+    const unsubscribeContribForMonth = onSnapshot(contribForMonthQuery, (snapshot) => {
       let sumVal = 0;
       snapshot.forEach(doc => {
         const data = doc.data();
-        if (data.status !== 'voided') { 
-          sumVal += data.amount;
+        if (data.status !== 'voided') { // Client-side filter for voided status
+          sumVal += (data.amount || 0);
         }
       });
       setTotalContributionsMonth(sumVal);
       setLoadingMetrics(prev => ({ ...prev, contributionsMonth: false }));
     }, (error) => {
-        console.error(`Error fetching contributions for ${selectedMonthYear}:`, error);
+        console.error(`Error fetching contributions for month ${selectedMonthYear}:`, error);
+        toast({
+          title: "Error Fetching Monthly Contributions",
+          description: `Could not load contributions for ${selectedMonthYear}: ${error.message}. This may require a Firestore index on the 'monthsCovered' field. Check your Firestore console for index suggestions.`,
+          variant: "destructive",
+          duration: 10000,
+        });
         setTotalContributionsMonth(0);
         setLoadingMetrics(prev => ({ ...prev, contributionsMonth: false }));
     });
-    unsubscribes.push(unsubscribeContrib);
+    unsubscribes.push(unsubscribeContribForMonth);
 
-    // Fetch Total Expenditures (Selected Month)
+
+    // Fetch Total Expenditures (Selected Month) - based on expense date
     const expensesQuery = query(
       collection(db, "expenses"),
       where("date", ">=", firstDayTimestamp), 
@@ -162,13 +169,12 @@ export default function DashboardPage() {
       const userContribQuery = query(
         collection(db, "contributions"),
         where("userId", "==", user.uid)
-        // orderBy("datePaid", "desc") // Optional: Consider if ordering is beneficial for performance or debugging
       );
       const unsubscribeUserContrib = onSnapshot(userContribQuery, (snapshot) => {
         let totalUserSum = 0;
         snapshot.forEach(doc => {
           const data = doc.data();
-          if (data.status !== 'voided') { // Client-side filter
+          if (data.status !== 'voided') { 
             totalUserSum += (data.amount || 0);
           }
         });
@@ -242,7 +248,7 @@ export default function DashboardPage() {
     return () => {
       unsubscribes.forEach(unsub => unsub());
     };
-  }, [isMounted, db, user, settings.currencySymbol, selectedMonthYear]);
+  }, [isMounted, db, user, settings.currencySymbol, selectedMonthYear, toast]); // Added toast to dependencies
 
 
   const selectedMonthLabel = useMemo(() => {
@@ -293,7 +299,7 @@ export default function DashboardPage() {
           title="Monthly Contributions"
           value={!isMounted || loadingMetrics.contributionsMonth ? <Skeleton className="h-7 w-3/4" /> : `${settings.currencySymbol} ${(totalContributionsMonth ?? 0).toLocaleString()}`}
           icon={CircleDollarSign}
-          description={`Active contributions for ${selectedMonthLabel}`}
+          description={`Contributions recorded for ${selectedMonthLabel}`}
         />
          <MetricCard
           title="Currently Overdue Members"
@@ -393,4 +399,5 @@ export default function DashboardPage() {
     </>
   );
 }
-    
+
+      
