@@ -25,37 +25,26 @@ import type {
   Professional,
   BankBalance,
   UserProfile,
-  ReportData, // Assuming ReportData is correctly imported or defined in types
-} from "@/lib/types"; // Ensure ReportData is here or correctly pathed
+  ReportData,
+} from "@/lib/types";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertTriangle, Download, ImageIcon, Loader2, FileText } from "lucide-react";
 import { format, startOfYear, endOfYear, parse } from "date-fns";
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { useToast } from "@/hooks/use-toast";
-import ReportView from '@/components/reports/ReportView'; // ReportData should be used by ReportView
+import ReportView from '@/components/reports/ReportView';
 import { useAuth } from "@/contexts/AuthProvider";
 
 
 const generateYearOptions = () => {
   const currentYear = new Date().getFullYear();
   const years = [];
-  for (let i = 0; i < 5; i++) { // Generate current year and 4 past years
+  for (let i = 0; i < 5; i++) { 
     years.push(currentYear - i);
   }
   return years;
 };
-
-interface TaxSummaryData {
-  year: string;
-  totalIncome: number;
-  totalExpenditure: number;
-  surplusDeficit: number;
-  incomeBreakdown: { label: string; amount: number }[];
-  expenditureBreakdown: { label: string; amount: number }[];
-  memberTPINs: { name: string; tpin: string }[];
-}
-
 
 export default function TaxSummaryPage() {
   const { db } = useFirebase();
@@ -97,8 +86,8 @@ export default function TaxSummaryPage() {
         const contributionsRef = collection(db, "contributions");
         let contribQuery = query(
             contributionsRef,
-            where("status", "!=", "voided"), // Inequality filter
-            orderBy("datePaid", "asc")        // Order by the field used in range filters
+            where("status", "!=", "voided"),
+            orderBy("datePaid", "asc")
         );
 
         if (reportStartDate) {
@@ -107,7 +96,7 @@ export default function TaxSummaryPage() {
         if (reportEndDate) {
             contribQuery = query(contribQuery, where("datePaid", "<=", reportEndDate));
         }
-        // This query will require a composite index (status ASC, datePaid ASC)
+        
         const contribSnap = await getDocs(contribQuery);
         contribSnap.forEach(doc => totalContributions += (doc.data() as Contribution).amount || 0);
 
@@ -167,52 +156,41 @@ export default function TaxSummaryPage() {
         const totalIncome = totalContributions + totalRentalIncome + totalBankInterest + totalOtherIncome;
         const totalExpenditure = totalOperatingExpenses + totalProfessionalFees + totalBankCharges;
 
-        const currentSummaryData: TaxSummaryData = {
-            year: selectedYear,
-            totalIncome,
-            totalExpenditure,
-            surplusDeficit: totalIncome - totalExpenditure,
-            incomeBreakdown: [
-              { label: "Contributions Received", amount: totalContributions },
-              { label: "Rental Income", amount: totalRentalIncome },
-              { label: "Bank Interest Earned", amount: totalBankInterest },
-            ].filter(item => item.amount !== 0),
-            expenditureBreakdown: [
-              { label: "Operating Expenses", amount: totalOperatingExpenses },
-              { label: "Professional Fees Paid", amount: totalProfessionalFees },
-              { label: "Bank Charges", amount: totalBankCharges },
-            ].filter(item => item.amount !== 0),
-            memberTPINs: memberTPINs,
-        };
-        // setSummaryData(currentSummaryData); // Not used directly for display anymore
+        const activityData = [
+              { category: "Income", description: "Contributions Received", amount: totalContributions },
+              { category: "Income", description: "Rental Income", amount: totalRentalIncome },
+              { category: "Income", description: "Bank Interest Earned", amount: totalBankInterest },
+              // Add other income sources here if any
+              { category: "Expenditure", description: "Operating Expenses", amount: totalOperatingExpenses },
+              { category: "Expenditure", description: "Professional Fees Paid", amount: totalProfessionalFees },
+              { category: "Expenditure", description: "Bank Charges", amount: totalBankCharges },
+              // Add other expenditure categories here if any
+        ];
 
         setGeneratedReportData({
             title: `Annual Financial Summary - ${selectedYear}`,
             dateRange: dateRangeString,
             currencySymbol: globalSettings.currencySymbol || "MK",
             columns: [ { accessorKey: "category", header: "Category" }, { accessorKey: "description", header: "Item" }, { accessorKey: "amount", header: `Amount (${globalSettings.currencySymbol})` } ],
-            data: [
-                ...currentSummaryData.incomeBreakdown.map(item => ({ category: "Income", description: item.label, amount: item.amount })),
-                ...currentSummaryData.expenditureBreakdown.map(item => ({ category: "Expenditure", description: item.label, amount: item.amount })),
-            ].filter(item => item.amount !==0),
+            data: activityData, // Removed .filter(item => item.amount !== 0) to show all categories
             summary: [
                 { label: "Total Income", value: totalIncome },
                 { label: "Total Expenditure", value: totalExpenditure },
                 { label: "Net Activity (Surplus/Deficit)", value: totalIncome - totalExpenditure },
             ],
              _customData: { 
-                memberTPINs: currentSummaryData.memberTPINs,
+                memberTPINs: memberTPINs,
             }
         });
       
       toast({title: "Annual Summary Generated", description: `Summary for ${selectedYear} is ready.`});
     } catch (err: any) {
       console.error(`Error generating annual financial summary:`, err);
-      const errorMessage = `Could not generate summary: ${err.message}. This may be due to missing Firestore indexes. Check the developer console for a link to create the index if provided by Firestore. Required index likely involves 'status' and 'datePaid' on the 'contributions' collection.`;
+      const firestoreIndexMessage = "This may be due to missing Firestore indexes. Check the developer console (F12 -> Console) for a link to create the required index if provided by Firestore. The query involves filtering 'status' and ordering/ranging by 'datePaid' on the 'contributions' collection, and similar patterns on other collections."
+      const errorMessage = `Could not generate summary: ${err.message}. ${firestoreIndexMessage}`;
       setError(errorMessage);
       toast({ title: "Summary Generation Error", description: errorMessage, variant: "destructive", duration: 15000 });
       setGeneratedReportData(null);
-      // setSummaryData(null); // Not used for display
     } finally {
       setLoading(false);
     }
@@ -336,3 +314,4 @@ export default function TaxSummaryPage() {
     </ProtectedRoute>
   );
 }
+
