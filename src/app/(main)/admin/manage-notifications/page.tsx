@@ -12,7 +12,22 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import Spinner from '@/components/common/Spinner'; // Assuming you have a spinner component at this path
+import Spinner from '@/components/common/Spinner';
+
+// --- IMPORT THE NEW ALERT DIALOG COMPONENTS ---
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
+// ---------------------------------------------
+
 
 // Define types for our data
 interface User {
@@ -40,7 +55,6 @@ export default function ManageNotificationsPage() {
   const [isSending, setIsSending] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
 
-  // Memoize callable functions to prevent re-creation on re-renders
   const [callableFuncs] = useState<{ [key: string]: HttpsCallable<any, any> }>(() => {
     const functions = getFunctions();
     return {
@@ -50,7 +64,6 @@ export default function ManageNotificationsPage() {
     };
   });
 
-  // Fetch active users for the dropdown
   useEffect(() => {
     const fetchUsers = async () => {
       try {
@@ -70,7 +83,6 @@ export default function ManageNotificationsPage() {
     fetchUsers();
   }, []);
 
-  // Fetch sent notification history
   const fetchHistory = async () => {
     setIsLoadingHistory(true);
     try {
@@ -107,8 +119,8 @@ export default function ManageNotificationsPage() {
       };
       const result: any = await callableFuncs.send(payload);
       toast.success(result.data.message || 'Notification sent successfully!');
-      setMessage(''); // Clear message field
-      await fetchHistory(); // Refresh the list of sent notifications
+      setMessage('');
+      await fetchHistory();
     } catch (error: any) {
       console.error("Error sending notification: ", error);
       toast.error(error.message || 'An unknown error occurred.');
@@ -118,15 +130,13 @@ export default function ManageNotificationsPage() {
   };
 
   const handleDelete = async (notificationId: string) => {
-    if (window.confirm('Are you sure? This will delete the notification for the user, or the entire batch if sent to all users.')) {
-        try {
-            const result: any = await callableFuncs.delete({ notificationId });
-            toast.success(result.data.message || 'Notification deleted!');
-            await fetchHistory(); // Refresh the list of sent notifications
-        } catch (error: any) {
-            console.error("Error deleting notification:", error);
-            toast.error(error.message || 'Failed to delete notification.');
-        }
+    try {
+        const result: any = await callableFuncs.delete({ notificationId });
+        toast.success(result.data.message || 'Notification deleted!');
+        await fetchHistory();
+    } catch (error: any) {
+        console.error("Error deleting notification:", error);
+        toast.error(error.message || 'Failed to delete notification.');
     }
   };
 
@@ -169,10 +179,10 @@ export default function ManageNotificationsPage() {
               <Select value={notificationType} onValueChange={setNotificationType}>
                 <SelectTrigger id="notificationType"><SelectValue placeholder="Select type" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="info">Info (Blue)</SelectItem>
-                  <SelectItem value="success">Success (Green)</SelectItem>
-                  <SelectItem value="warning">Warning (Yellow)</SelectItem>
-                  <SelectItem value="error">Error (Red)</SelectItem>
+                  <SelectItem value="info">Info</SelectItem>
+                  <SelectItem value="success">Completion</SelectItem>
+                  <SelectItem value="warning">Warning</SelectItem>
+                  <SelectItem value="error">Error</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -185,11 +195,9 @@ export default function ManageNotificationsPage() {
         </CardContent>
       </Card>
 
+
       <Card>
-        <CardHeader>
-          <CardTitle>Sent Notifications History</CardTitle>
-          <CardDescription>A log of the most recently sent manual notifications.</CardDescription>
-        </CardHeader>
+        <CardHeader><CardTitle>Sent Notifications History</CardTitle><CardDescription>A log of the most recently sent manual notifications.</CardDescription></CardHeader>
         <CardContent>
           {isLoadingHistory ? <div className="flex justify-center p-8"><Spinner /></div> : (
             <div className="border rounded-md">
@@ -209,9 +217,28 @@ export default function ManageNotificationsPage() {
                       <TableCell className="max-w-sm break-words">{notif.message}</TableCell>
                       <TableCell>{new Date(notif.createdAt).toLocaleString()}</TableCell>
                       <TableCell className="text-right">
-                        <Button variant="ghost" size="icon" onClick={() => handleDelete(notif.id)}>
-                          <FaTrashAlt className="h-4 w-4 text-destructive" />
-                        </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="icon">
+                              <FaTrashAlt className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This action cannot be undone. This will permanently delete the notification.
+                                {notif.recipient === 'All Users' && ' This will delete the notification for ALL users who received it.'}
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => handleDelete(notif.id)}>
+                                Continue
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                       </TableCell>
                     </TableRow>
                   )) : (
