@@ -1,8 +1,15 @@
-import type {Metadata} from 'next';
-import {Geist, Geist_Mono} from 'next/font/google';
+// src/app/layout.tsx
+
+import type { Metadata } from 'next';
+import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import { AppProviders } from '@/providers/AppProviders';
 import { APP_NAME } from '@/lib/constants';
+
+// --- ADD THESE TWO LINES FOR NOTIFICATIONS ---
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+// ---------------------------------------------
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -28,6 +35,20 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <AppProviders>
+          {/* --- ADD THE TOAST CONTAINER COMPONENT HERE --- */}
+          <ToastContainer
+            position="top-right"
+            autoClose={5000}
+            hideProgressBar={false}
+            newestOnTop={false}
+            closeOnClick
+            rtl={false}
+            pauseOnFocusLoss
+            draggable
+            pauseOnHover
+            theme="colored"
+          />
+          {/* ------------------------------------------------ */}
           {children}
         </AppProviders>
       </body>
